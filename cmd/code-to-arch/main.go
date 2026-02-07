@@ -1,0 +1,151 @@
+// Code to Arch MCP - A Model Context Protocol server for codebase architecture analysis.
+// Scans codebases, generates architecture diagrams, and detects architectural drift.
+package main
+
+import (
+	"context"
+	"flag"
+	"log"
+	"log/slog"
+	"os"
+	"os/signal"
+	"syscall"
+
+	"github.com/modelcontextprotocol/go-sdk/mcp"
+	"github.com/olgasafonova/code-to-arch-mcp/tools"
+	"github.com/olgasafonova/code-to-arch-mcp/tracing"
+)
+
+const (
+	ServerName    = "code-to-arch-mcp"
+	ServerVersion = "0.1.0"
+)
+
+func main() {
+	httpAddr := flag.String("http", "", "HTTP address to listen on (e.g., :8080). If empty, uses stdio transport.")
+	flag.Parse()
+
+	logger := slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{
+		Level: slog.LevelInfo,
+	}))
+
+	// Initialize tracing
+	tracingConfig := tracing.DefaultConfig()
+	tracingConfig.ServiceVersion = ServerVersion
+	shutdownTracing, err := tracing.Setup(context.Background(), tracingConfig)
+	if err != nil {
+		logger.Warn("Failed to initialize tracing", "error", err)
+	} else if tracingConfig.Enabled {
+		defer func() { _ = shutdownTracing(context.Background()) }()
+		logger.Info("OpenTelemetry tracing enabled",
+			"endpoint", tracingConfig.OTLPEndpoint,
+			"service", tracingConfig.ServiceName)
+	}
+
+	// Create MCP server
+	server := mcp.NewServer(&mcp.Implementation{
+		Name:    ServerName,
+		Version: ServerVersion,
+	}, &mcp.ServerOptions{
+		Logger: logger,
+		Instructions: `Code to Arch MCP - Codebase Architecture Analysis
+
+## Getting Started
+
+Point any tool at a codebase directory path.
+
+## Tool Selection Guide
+
+### Full scan:
+"Analyze the architecture of this project"
+-> USE: arch_scan (returns nodes, edges, topology)
+
+### Focused view:
+"Show me just the API service"
+-> USE: arch_focus (scans a subdirectory)
+
+### Generate diagram:
+"Create a Mermaid diagram of this project"
+-> USE: arch_generate (outputs Mermaid, PlantUML, C4, Structurizr, JSON)
+
+### Dependencies:
+"What does this service depend on?"
+-> USE: arch_dependencies (internal, external, infrastructure)
+
+### Data flow:
+"How does data flow through the system?"
+-> USE: arch_dataflow (endpoints, data paths, stores)
+
+### Boundaries:
+"Is this a monolith or microservices?"
+-> USE: arch_boundaries (topology detection, service boundaries)
+
+### Drift from baseline:
+"Has the architecture changed since our last review?"
+-> USE: arch_diff (compare against saved snapshot)
+
+### Drift between refs:
+"What changed architecturally since v1.0?"
+-> USE: arch_drift (compare two git refs)
+
+### Validation:
+"Are there any architecture problems?"
+-> USE: arch_validate (circular deps, layering violations)
+
+### History:
+"How has the architecture evolved?"
+-> USE: arch_history (evolution over git history)
+
+### Save baseline:
+"Save this as our v2.0 architecture"
+-> USE: arch_snapshot (saves JSON for drift detection)
+
+### Explanation:
+"Why is it structured this way?"
+-> USE: arch_explain (architecture rationale with code evidence)
+
+## Supported Languages
+
+Go (go/ast), TypeScript (tree-sitter), Python (tree-sitter)
+
+## Output Formats
+
+mermaid, plantuml, c4, structurizr, json`,
+	})
+
+	// Register tools
+	registry := tools.NewHandlerRegistry(logger)
+	registry.RegisterAll(server)
+
+	ctx := context.Background()
+
+	if *httpAddr != "" {
+		logger.Info("Starting Code to Arch MCP (HTTP mode)",
+			"address", *httpAddr,
+		)
+		// HTTP transport will be added in a later phase
+		log.Fatalf("HTTP mode not yet implemented. Use stdio transport.")
+	}
+
+	logger.Info("Starting Code to Arch MCP (stdio mode)",
+		"name", ServerName,
+		"version", ServerVersion,
+	)
+
+	sigChan := make(chan os.Signal, 1)
+	signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
+
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
+
+	go func() {
+		sig := <-sigChan
+		logger.Info("Shutdown signal received", "signal", sig.String())
+		cancel()
+	}()
+
+	if err := server.Run(ctx, &mcp.StdioTransport{}); err != nil && err != context.Canceled {
+		log.Fatalf("Server error: %v", err)
+	}
+	logger.Info("Shutdown complete")
+}
