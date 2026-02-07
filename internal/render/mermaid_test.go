@@ -86,7 +86,7 @@ func TestMermaid_LRDirection(t *testing.T) {
 	}
 }
 
-func TestSanitizeMermaidID(t *testing.T) {
+func TestSanitizeID(t *testing.T) {
 	tests := []struct {
 		input, expected string
 	}{
@@ -96,9 +96,9 @@ func TestSanitizeMermaidID(t *testing.T) {
 		{"my-service", "my_service"},
 	}
 	for _, tt := range tests {
-		got := sanitizeMermaidID(tt.input)
+		got := SanitizeID(tt.input)
 		if got != tt.expected {
-			t.Errorf("sanitizeMermaidID(%q) = %q, want %q", tt.input, got, tt.expected)
+			t.Errorf("SanitizeID(%q) = %q, want %q", tt.input, got, tt.expected)
 		}
 	}
 }

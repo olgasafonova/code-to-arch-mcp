@@ -66,7 +66,7 @@ func Mermaid(graph *model.ArchGraph, opts Options) string {
 	edges := graph.Edges()
 
 	// Filter nodes by view level
-	visible := filterNodesByViewLevel(nodes, opts.ViewLevel)
+	visible := FilterNodesByViewLevel(nodes, opts.ViewLevel)
 	visibleIDs := make(map[string]bool)
 	for _, n := range visible {
 		visibleIDs[n.ID] = true
@@ -92,35 +92,13 @@ func Mermaid(graph *model.ArchGraph, opts Options) string {
 			label = string(e.Type)
 		}
 		fmt.Fprintf(&sb, "    %s -->|%s| %s\n",
-			sanitizeMermaidID(e.Source),
+			SanitizeID(e.Source),
 			label,
-			sanitizeMermaidID(e.Target),
+			SanitizeID(e.Target),
 		)
 	}
 
 	return sb.String()
-}
-
-func filterNodesByViewLevel(nodes []*model.Node, level ViewLevel) []*model.Node {
-	var result []*model.Node
-	for _, n := range nodes {
-		switch level {
-		case ViewSystem:
-			// Only services and external APIs
-			if n.Type == model.NodeService || n.Type == model.NodeExternalAPI {
-				result = append(result, n)
-			}
-		case ViewContainer:
-			// Services, databases, queues, caches, external APIs
-			if n.Type != model.NodePackage && n.Type != model.NodeEndpoint {
-				result = append(result, n)
-			}
-		case ViewComponent:
-			// Everything
-			result = append(result, n)
-		}
-	}
-	return result
 }
 
 func renderNodeGroup(sb *strings.Builder, nodes []*model.Node, nodeType model.NodeType, groupLabel string) {
@@ -136,7 +114,7 @@ func renderNodeGroup(sb *strings.Builder, nodes []*model.Node, nodeType model.No
 
 	fmt.Fprintf(sb, "    subgraph %s\n", groupLabel)
 	for _, n := range group {
-		id := sanitizeMermaidID(n.ID)
+		id := SanitizeID(n.ID)
 		shape := mermaidShape(n.Type)
 		fmt.Fprintf(sb, "        %s%s%s%s\n", id, shape.open, n.Name, shape.close)
 	}
@@ -162,15 +140,4 @@ func mermaidShape(t model.NodeType) shapeDelimiters {
 	default:
 		return shapeDelimiters{"[", "]"}
 	}
-}
-
-func sanitizeMermaidID(id string) string {
-	r := strings.NewReplacer(
-		"/", "_",
-		":", "_",
-		".", "_",
-		" ", "_",
-		"-", "_",
-	)
-	return r.Replace(id)
 }

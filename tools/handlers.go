@@ -8,6 +8,7 @@ import (
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 	"github.com/olgasafonova/code-to-arch-mcp/internal/analyzer/golang"
+	"github.com/olgasafonova/code-to-arch-mcp/internal/analyzer/typescript"
 	"github.com/olgasafonova/code-to-arch-mcp/internal/detector"
 	"github.com/olgasafonova/code-to-arch-mcp/internal/drift"
 	"github.com/olgasafonova/code-to-arch-mcp/internal/model"
@@ -24,7 +25,8 @@ type HandlerRegistry struct {
 // NewHandlerRegistry creates a registry with all dependencies wired.
 func NewHandlerRegistry(logger *slog.Logger) *HandlerRegistry {
 	goAnalyzer := golang.New()
-	s := scanner.New(logger, goAnalyzer)
+	tsAnalyzer := typescript.New()
+	s := scanner.New(logger, goAnalyzer, tsAnalyzer)
 
 	return &HandlerRegistry{
 		scanner: s,
@@ -170,8 +172,10 @@ func (h *HandlerRegistry) archGenerate(ctx context.Context, args ArchGenerateArg
 	switch opts.Format {
 	case render.FormatMermaid:
 		diagram = render.Mermaid(graph, opts)
+	case render.FormatPlantUML:
+		diagram = render.PlantUML(graph, opts)
 	default:
-		return nil, fmt.Errorf("unsupported format: %s (supported: mermaid)", args.Format)
+		return nil, fmt.Errorf("unsupported format: %s (supported: mermaid, plantuml)", args.Format)
 	}
 
 	return &ArchGenerateResult{
