@@ -4,9 +4,12 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"path/filepath"
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 	"github.com/olgasafonova/code-to-arch-mcp/internal/analyzer/golang"
+	"github.com/olgasafonova/code-to-arch-mcp/internal/detector"
+	"github.com/olgasafonova/code-to-arch-mcp/internal/drift"
 	"github.com/olgasafonova/code-to-arch-mcp/internal/model"
 	"github.com/olgasafonova/code-to-arch-mcp/internal/render"
 	"github.com/olgasafonova/code-to-arch-mcp/internal/scanner"
@@ -86,7 +89,7 @@ type ArchScanResult struct {
 	Summary   string        `json:"summary"`
 }
 
-func (h *HandlerRegistry) archScan(ctx context.Context, args ArchScanArgs) (*ArchScanResult, error) {
+func (h *HandlerRegistry) archScan(_ context.Context, args ArchScanArgs) (*ArchScanResult, error) {
 	if args.Path == "" {
 		return nil, fmt.Errorf("path is required")
 	}
@@ -94,6 +97,12 @@ func (h *HandlerRegistry) archScan(ctx context.Context, args ArchScanArgs) (*Arc
 	graph, err := h.scanner.Scan(args.Path)
 	if err != nil {
 		return nil, fmt.Errorf("scanning codebase: %w", err)
+	}
+
+	// Detect topology from project structure
+	boundaries, bErr := detector.DetectBoundaries(args.Path)
+	if bErr == nil {
+		graph.Topology = boundaries.Topology
 	}
 
 	return &ArchScanResult{
@@ -310,34 +319,43 @@ type ArchBoundariesArgs struct {
 	Path string `json:"path"`
 }
 
-type ArchBoundariesResult struct {
-	Topology   string   `json:"topology"`
-	Boundaries []string `json:"boundaries"`
-	Summary    string   `json:"summary"`
+type BoundaryInfo struct {
+	Name    string   `json:"name"`
+	Path    string   `json:"path"`
+	Type    string   `json:"type"`
+	Markers []string `json:"markers"`
 }
 
-func (h *HandlerRegistry) archBoundaries(ctx context.Context, args ArchBoundariesArgs) (*ArchBoundariesResult, error) {
+type ArchBoundariesResult struct {
+	Topology   string         `json:"topology"`
+	Boundaries []BoundaryInfo `json:"boundaries"`
+	Summary    string         `json:"summary"`
+}
+
+func (h *HandlerRegistry) archBoundaries(_ context.Context, args ArchBoundariesArgs) (*ArchBoundariesResult, error) {
 	if args.Path == "" {
 		return nil, fmt.Errorf("path is required")
 	}
 
-	graph, err := h.scanner.Scan(args.Path)
+	result, err := detector.DetectBoundaries(args.Path)
 	if err != nil {
-		return nil, fmt.Errorf("scanning codebase: %w", err)
+		return nil, fmt.Errorf("detecting boundaries: %w", err)
 	}
 
-	var boundaries []string
-	for _, n := range graph.NodesByType(model.NodeService) {
-		boundaries = append(boundaries, n.Name)
-	}
-	for _, n := range graph.NodesByType(model.NodeModule) {
-		boundaries = append(boundaries, n.Name)
+	var boundaries []BoundaryInfo
+	for _, b := range result.Boundaries {
+		boundaries = append(boundaries, BoundaryInfo{
+			Name:    b.Name,
+			Path:    b.Path,
+			Type:    b.Type,
+			Markers: b.Markers,
+		})
 	}
 
 	return &ArchBoundariesResult{
-		Topology:   string(graph.Topology),
+		Topology:   string(result.Topology),
 		Boundaries: boundaries,
-		Summary:    fmt.Sprintf("Detected %s topology with %d boundaries", graph.Topology, len(boundaries)),
+		Summary:    fmt.Sprintf("Detected %s topology with %d boundaries", result.Topology, len(boundaries)),
 	}, nil
 }
 
@@ -347,10 +365,27 @@ type ArchDiffArgs struct {
 }
 
 func (h *HandlerRegistry) archDiff(_ context.Context, args ArchDiffArgs) (*model.DiffReport, error) {
-	return &model.DiffReport{
-		Summary:     "Diff detection not yet implemented. Save a snapshot first with arch_snapshot.",
-		MaxSeverity: model.SeverityNone,
-	}, nil
+	if args.Path == "" || args.SnapshotFile == "" {
+		return nil, fmt.Errorf("path and snapshot_file are required")
+	}
+
+	// Load baseline from snapshot
+	snapshot, err := drift.Load(args.SnapshotFile)
+	if err != nil {
+		return nil, fmt.Errorf("loading snapshot: %w", err)
+	}
+	baseline := snapshot.ToGraph()
+
+	// Scan current codebase
+	current, err := h.scanner.Scan(args.Path)
+	if err != nil {
+		return nil, fmt.Errorf("scanning current codebase: %w", err)
+	}
+
+	report := drift.Compare(baseline, current)
+	report.BaseRef = args.SnapshotFile
+	report.CompareRef = "current"
+	return report, nil
 }
 
 type ArchDriftArgs struct {
@@ -421,22 +456,37 @@ type ArchSnapshotArgs struct {
 }
 
 type ArchSnapshotResult struct {
-	File    string `json:"file"`
-	Summary string `json:"summary"`
+	File      string `json:"file"`
+	NodeCount int    `json:"node_count"`
+	EdgeCount int    `json:"edge_count"`
+	Summary   string `json:"summary"`
 }
 
-func (h *HandlerRegistry) archSnapshot(ctx context.Context, args ArchSnapshotArgs) (*ArchSnapshotResult, error) {
+func (h *HandlerRegistry) archSnapshot(_ context.Context, args ArchSnapshotArgs) (*ArchSnapshotResult, error) {
 	if args.Path == "" {
 		return nil, fmt.Errorf("path is required")
 	}
 
-	_, err := h.scanner.Scan(args.Path)
+	graph, err := h.scanner.Scan(args.Path)
 	if err != nil {
 		return nil, fmt.Errorf("scanning codebase: %w", err)
 	}
 
+	outFile := args.OutputFile
+	if outFile == "" {
+		outFile = filepath.Join(args.Path, "architecture.snapshot.json")
+	}
+
+	snap, err := drift.Save(graph, outFile, args.Label)
+	if err != nil {
+		return nil, fmt.Errorf("saving snapshot: %w", err)
+	}
+
 	return &ArchSnapshotResult{
-		Summary: "Snapshot saving not yet implemented. Use arch_scan + arch_generate for now.",
+		File:      outFile,
+		NodeCount: len(snap.Nodes),
+		EdgeCount: len(snap.Edges),
+		Summary:   fmt.Sprintf("Saved snapshot with %d nodes and %d edges to %s", len(snap.Nodes), len(snap.Edges), outFile),
 	}, nil
 }
 
