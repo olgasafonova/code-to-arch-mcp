@@ -106,6 +106,21 @@ Or run from source:
 }
 ```
 
+## Scan control
+
+All scan tools accept optional parameters for handling large codebases:
+
+| Parameter | What it does |
+|-----------|-------------|
+| `max_files` | Stop after analyzing N files (returns partial result) |
+| `max_nodes` | Stop after discovering N architecture nodes |
+| `timeout_secs` | Cancel scan after N seconds |
+| `workers` | Parallel analysis workers (default: CPU count, max 8) |
+| `skip_dirs` | Additional directories to skip (beyond defaults like `node_modules`, `.git`, `vendor`) |
+| `skip_globs` | File patterns to skip (e.g. `*_test.go`, `*.spec.ts`) |
+
+Partial results include a `truncated: true` flag so you know the graph is incomplete. Sequential tool calls on the same path are cached for 30 seconds.
+
 ## Usage examples
 
 Once configured, ask your LLM:
@@ -119,6 +134,7 @@ Once configured, ask your LLM:
 - "Compare architecture between the v1.0 tag and main branch"
 - "Save this architecture as our v2.0 baseline"
 - "Explain the architecture decisions in this codebase"
+- "Scan this monorepo but limit to 500 files and skip test files"
 
 ## Development
 
@@ -155,6 +171,7 @@ internal/
   detector/                Boundary detection, topology, validation, explanation
   drift/                   Snapshot comparison, git ref diffing, history
   render/                  Mermaid, PlantUML, C4, Structurizr, JSON, draw.io, Excalidraw
+  infra/                   Scan result cache
 tools/                     MCP tool definitions and handlers
 ```
 
