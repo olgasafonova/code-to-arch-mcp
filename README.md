@@ -1,16 +1,18 @@
 # Code to Arch MCP
 
-An MCP server that scans codebases and extracts architecture as structured data. Point it at a directory; it returns services, databases, queues, endpoints, and their relationships. Generate diagrams. Detect when code drifts from documented architecture.
+An MCP server that reverse-engineers architecture from source code. Point it at any codebase; it returns services, databases, queues, endpoints, and their relationships as a structured graph. Generate diagrams in 7 formats. Detect drift between any two branches, tags, or commits. Validate architecture rules. Track how the system evolves over time.
+
+No configuration files, no manual diagramming. Static analysis builds the architecture model directly from your code.
 
 ## What it does
 
-**Static analysis, not guesswork.** Parses source files with language-specific analyzers (Go via `go/ast`, TypeScript via tree-sitter) and builds an architecture graph of nodes and edges.
+**Parses source files with language-specific analyzers** (Go via `go/ast`, TypeScript and Python via tree-sitter) and builds an architecture graph of nodes and edges.
 
 **Nodes** represent components: services, modules, packages, databases, message queues, caches, external APIs, HTTP endpoints.
 
 **Edges** represent relationships: dependencies, API calls, data flows, publish/subscribe, read/write.
 
-The server exposes 12 MCP tools that an LLM can call to analyze, visualize, and validate architecture.
+**12 MCP tools** let an LLM analyze, visualize, compare, and validate architecture on demand.
 
 ## Tools
 
@@ -18,29 +20,47 @@ The server exposes 12 MCP tools that an LLM can call to analyze, visualize, and 
 |------|-------------|
 | `arch_scan` | Scan a codebase and return the full architecture graph |
 | `arch_focus` | Scan a specific subdirectory or service |
-| `arch_generate` | Generate a diagram (Mermaid, PlantUML) |
+| `arch_generate` | Generate a diagram (Mermaid, PlantUML, C4, Structurizr, JSON, draw.io, Excalidraw) |
 | `arch_dependencies` | Map internal, external, and infrastructure dependencies |
 | `arch_dataflow` | Trace data flow from endpoints to data stores |
 | `arch_boundaries` | Detect service boundaries and topology (monolith, monorepo, microservices) |
 | `arch_diff` | Compare current architecture against a saved baseline |
-| `arch_drift` | Compare architecture between two git refs |
-| `arch_validate` | Check for circular dependencies and layering violations |
+| `arch_drift` | Compare architecture between two branches, tags, or commits |
+| `arch_validate` | Check for circular dependencies, orphan nodes, and layering violations |
 | `arch_history` | Show how architecture evolved over git history |
 | `arch_snapshot` | Save current architecture as a baseline |
-| `arch_explain` | Explain architecture decisions with code evidence |
+| `arch_explain` | Explain topology, patterns, key decisions, and risks with code evidence |
+
+## Supported languages
+
+| Language | Analyzer | Detection |
+|----------|---------|-----------|
+| Go | `go/ast` (stdlib) | Packages, imports, HTTP handlers, infrastructure |
+| TypeScript/TSX | tree-sitter | Modules, imports, Express/Fastify/Koa routes, infrastructure |
+| Python | tree-sitter | Modules, imports, Flask/FastAPI routes, infrastructure |
 
 ## Infrastructure detection
 
-The analyzers recognize common infrastructure packages and classify them automatically:
+Analyzers recognize common infrastructure packages and classify them automatically:
 
-| Category | Go packages | TypeScript packages |
-|----------|------------|-------------------|
-| **Database** | database/sql, gorm, pgx, sqlx | pg, prisma, typeorm, mongoose, sequelize, drizzle-orm |
-| **Queue** | amqp, kafka, nats | kafkajs, bullmq, amqplib, nats |
-| **Cache** | redis, memcache | ioredis, redis, keyv |
-| **HTTP client** | net/http (client) | axios, node-fetch, got, undici |
+| Category | Go | TypeScript | Python |
+|----------|-----|-----------|--------|
+| **Database** | database/sql, gorm, pgx, sqlx | pg, prisma, typeorm, mongoose, sequelize, drizzle-orm | sqlalchemy, django.db, pymongo, psycopg2, peewee, tortoise |
+| **Queue** | amqp, kafka, nats | kafkajs, bullmq, amqplib, nats | celery, kombu, pika, kafka, rq |
+| **Cache** | redis, memcache | ioredis, redis, keyv | redis, pymemcache, aiocache |
+| **HTTP client** | net/http (client) | axios, node-fetch, got, undici | requests, httpx, aiohttp, urllib3 |
 
-TypeScript route detection covers Express, Fastify, and Koa patterns (`app.get('/path', handler)`).
+## Output formats
+
+| Format | Description |
+|--------|------------|
+| Mermaid | Flowchart syntax, renders in GitHub, Notion, most markdown viewers |
+| PlantUML | Component diagrams with UML notation |
+| C4 | C4-PlantUML container diagrams with `!include <C4/C4_Container>` |
+| Structurizr DSL | Workspace model for Structurizr tooling |
+| JSON | Structured data with nodes, edges, topology metadata |
+| draw.io | XML format, open directly in diagrams.net |
+| Excalidraw | JSON format, open directly in Excalidraw |
 
 ## Setup
 
@@ -91,29 +111,14 @@ Or run from source:
 Once configured, ask your LLM:
 
 - "Scan the architecture of ~/Projects/my-app"
-- "Generate a Mermaid diagram of this project"
+- "Generate a C4 diagram of this project"
+- "Export the architecture as Excalidraw"
 - "What databases does this service connect to?"
-- "Are there any circular dependencies?"
-- "Save this architecture as our v1.0 baseline"
-- "Has the architecture changed since the last snapshot?"
-
-## Output formats
-
-| Format | Status |
-|--------|--------|
-| Mermaid | Implemented |
-| PlantUML | Implemented |
-| C4 | Planned |
-| Structurizr DSL | Planned |
-| JSON | Planned |
-
-## Supported languages
-
-| Language | Analyzer | Detection |
-|----------|---------|-----------|
-| Go | `go/ast` (stdlib) | Packages, imports, HTTP handlers, infrastructure |
-| TypeScript/TSX | tree-sitter | Modules, imports, Express/Fastify routes, infrastructure |
-| Python | tree-sitter | Planned |
+- "Are there any circular dependencies or layering violations?"
+- "How has the architecture changed since last month?"
+- "Compare architecture between the v1.0 tag and main branch"
+- "Save this architecture as our v2.0 baseline"
+- "Explain the architecture decisions in this codebase"
 
 ## Development
 
@@ -125,7 +130,7 @@ make test        # Tests only
 
 ### Integration tests
 
-Run against real codebases (requires network for open-source repo cloning):
+Run against real codebases:
 
 ```bash
 go test -tags integration -race -v ./tests/
@@ -140,16 +145,17 @@ bash scripts/smoke-test.sh
 ## Architecture
 
 ```
-cmd/code-to-arch/       Entry point (stdio + HTTP transport)
+cmd/code-to-arch/          Entry point (stdio + HTTP transport)
 internal/
-  model/                ArchGraph, Node, Edge, Diff types
-  scanner/              File walker + analyzer orchestration
-  analyzer/golang/      Go static analysis (go/ast)
-  analyzer/typescript/  TypeScript analysis (tree-sitter)
-  detector/             Boundary detection, topology inference
-  drift/                Snapshot comparison, severity classification
-  render/               Mermaid, PlantUML renderers
-tools/                  MCP tool definitions and handlers
+  model/                   ArchGraph, Node, Edge, Diff types
+  scanner/                 File walker + analyzer orchestration
+  analyzer/golang/         Go static analysis (go/ast)
+  analyzer/typescript/     TypeScript analysis (tree-sitter)
+  analyzer/python/         Python analysis (tree-sitter)
+  detector/                Boundary detection, topology, validation, explanation
+  drift/                   Snapshot comparison, git ref diffing, history
+  render/                  Mermaid, PlantUML, C4, Structurizr, JSON, draw.io, Excalidraw
+tools/                     MCP tool definitions and handlers
 ```
 
 ## License
