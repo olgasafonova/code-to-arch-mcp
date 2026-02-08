@@ -2,9 +2,12 @@ package tools
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"path/filepath"
+	"strings"
+	"time"
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 	"github.com/olgasafonova/code-to-arch-mcp/internal/analyzer/golang"
@@ -12,6 +15,7 @@ import (
 	"github.com/olgasafonova/code-to-arch-mcp/internal/analyzer/typescript"
 	"github.com/olgasafonova/code-to-arch-mcp/internal/detector"
 	"github.com/olgasafonova/code-to-arch-mcp/internal/drift"
+	"github.com/olgasafonova/code-to-arch-mcp/internal/infra"
 	"github.com/olgasafonova/code-to-arch-mcp/internal/model"
 	"github.com/olgasafonova/code-to-arch-mcp/internal/render"
 	"github.com/olgasafonova/code-to-arch-mcp/internal/scanner"
@@ -20,6 +24,7 @@ import (
 // HandlerRegistry holds the state and dependencies for all tool handlers.
 type HandlerRegistry struct {
 	scanner *scanner.Scanner
+	cache   *infra.Cache[*scanner.ScanResult]
 	logger  *slog.Logger
 }
 
@@ -32,6 +37,7 @@ func NewHandlerRegistry(logger *slog.Logger) *HandlerRegistry {
 
 	return &HandlerRegistry{
 		scanner: s,
+		cache:   infra.NewCache[*scanner.ScanResult](30*time.Second, 10),
 		logger:  logger,
 	}
 }
@@ -74,34 +80,110 @@ func (h *HandlerRegistry) RegisteredTools() []ToolSpec {
 }
 
 // =============================================================================
+// ScanControl — embedded in Args structs that trigger scans
+// =============================================================================
+
+// ScanControl contains optional fields to control scan behavior.
+type ScanControl struct {
+	MaxFiles    int      `json:"max_files,omitempty"`
+	MaxNodes    int      `json:"max_nodes,omitempty"`
+	TimeoutSecs int      `json:"timeout_secs,omitempty"`
+	SkipDirs    []string `json:"skip_dirs,omitempty"`
+	SkipGlobs   []string `json:"skip_globs,omitempty"`
+	Workers     int      `json:"workers,omitempty"`
+}
+
+func (sc ScanControl) toScanOptions() scanner.ScanOptions {
+	opts := scanner.DefaultScanOptions()
+	if sc.MaxFiles > 0 {
+		opts.MaxFiles = sc.MaxFiles
+	}
+	if sc.MaxNodes > 0 {
+		opts.MaxNodes = sc.MaxNodes
+	}
+	if sc.TimeoutSecs > 0 {
+		opts.Timeout = time.Duration(sc.TimeoutSecs) * time.Second
+	}
+	if sc.Workers > 0 {
+		opts.Workers = sc.Workers
+	}
+	opts.SkipDirs = sc.SkipDirs
+	opts.SkipGlobs = sc.SkipGlobs
+	return opts
+}
+
+// cachedScan checks the cache before running a full scan.
+// Returns the result even on ErrLimitReached (partial result).
+func (h *HandlerRegistry) cachedScan(ctx context.Context, path string, opts scanner.ScanOptions) (*scanner.ScanResult, error) {
+	absPath, err := filepath.Abs(path)
+	if err != nil {
+		absPath = path
+	}
+
+	optsKey := fmt.Sprintf("%d|%d|%d|%d|%s|%s",
+		opts.MaxFiles, opts.MaxNodes, opts.Timeout, opts.Workers,
+		strings.Join(opts.SkipDirs, ","),
+		strings.Join(opts.SkipGlobs, ","),
+	)
+	key := infra.CacheKey(absPath, optsKey)
+
+	if cached, ok := h.cache.Get(key); ok {
+		h.logger.Debug("Scan cache hit", "path", absPath)
+		return cached, nil
+	}
+
+	result, err := h.scanner.ScanWithOptions(ctx, path, opts)
+	if err != nil && !errors.Is(err, scanner.ErrLimitReached) {
+		return nil, err
+	}
+
+	h.cache.Put(key, result)
+	return result, err
+}
+
+// scanPath runs a cached scan and unwraps the graph.
+// Returns the graph even on ErrLimitReached (partial result).
+func (h *HandlerRegistry) scanPath(ctx context.Context, path string, sc ScanControl) (*model.ArchGraph, bool, error) {
+	result, err := h.cachedScan(ctx, path, sc.toScanOptions())
+	if err != nil && !errors.Is(err, scanner.ErrLimitReached) {
+		return nil, false, err
+	}
+	return result.Graph, result.Truncated, nil
+}
+
+// =============================================================================
 // Handler implementations
 // =============================================================================
 
 // ArchScanArgs are the arguments for arch_scan.
 type ArchScanArgs struct {
 	Path string `json:"path"`
+	ScanControl
 }
 
 // ArchScanResult is the result of arch_scan.
 type ArchScanResult struct {
-	RootPath  string        `json:"root_path"`
-	Topology  string        `json:"topology"`
-	NodeCount int           `json:"node_count"`
-	EdgeCount int           `json:"edge_count"`
-	Nodes     []*model.Node `json:"nodes"`
-	Edges     []*model.Edge `json:"edges"`
-	Summary   string        `json:"summary"`
+	RootPath  string             `json:"root_path"`
+	Topology  string             `json:"topology"`
+	NodeCount int                `json:"node_count"`
+	EdgeCount int                `json:"edge_count"`
+	Nodes     []*model.Node      `json:"nodes"`
+	Edges     []*model.Edge      `json:"edges"`
+	Summary   string             `json:"summary"`
+	Stats     *scanner.ScanStats `json:"stats,omitempty"`
+	Truncated bool               `json:"truncated,omitempty"`
 }
 
-func (h *HandlerRegistry) archScan(_ context.Context, args ArchScanArgs) (*ArchScanResult, error) {
+func (h *HandlerRegistry) archScan(ctx context.Context, args ArchScanArgs) (*ArchScanResult, error) {
 	if args.Path == "" {
 		return nil, fmt.Errorf("path is required")
 	}
 
-	graph, err := h.scanner.Scan(args.Path)
-	if err != nil {
+	result, err := h.cachedScan(ctx, args.Path, args.toScanOptions())
+	if err != nil && !errors.Is(err, scanner.ErrLimitReached) {
 		return nil, fmt.Errorf("scanning codebase: %w", err)
 	}
+	graph := result.Graph
 
 	// Detect topology from project structure
 	boundaries, bErr := detector.DetectBoundaries(args.Path)
@@ -117,17 +199,19 @@ func (h *HandlerRegistry) archScan(_ context.Context, args ArchScanArgs) (*ArchS
 		Nodes:     graph.Nodes(),
 		Edges:     graph.Edges(),
 		Summary:   graph.Summary(),
+		Stats:     &result.Stats,
+		Truncated: result.Truncated,
 	}, nil
 }
 
 // ArchFocusArgs are the arguments for arch_focus.
 type ArchFocusArgs struct {
 	Path string `json:"path"`
+	ScanControl
 }
 
 func (h *HandlerRegistry) archFocus(ctx context.Context, args ArchFocusArgs) (*ArchScanResult, error) {
-	// Same as scan but for a subdirectory
-	return h.archScan(ctx, ArchScanArgs{Path: args.Path})
+	return h.archScan(ctx, ArchScanArgs{Path: args.Path, ScanControl: args.ScanControl})
 }
 
 // ArchGenerateArgs are the arguments for arch_generate.
@@ -137,6 +221,7 @@ type ArchGenerateArgs struct {
 	ViewLevel string `json:"view_level,omitempty"`
 	Title     string `json:"title,omitempty"`
 	Direction string `json:"direction,omitempty"`
+	ScanControl
 }
 
 // ArchGenerateResult is the result of arch_generate.
@@ -151,7 +236,7 @@ func (h *HandlerRegistry) archGenerate(ctx context.Context, args ArchGenerateArg
 		return nil, fmt.Errorf("path is required")
 	}
 
-	graph, err := h.scanner.Scan(args.Path)
+	graph, _, err := h.scanPath(ctx, args.Path, args.ScanControl)
 	if err != nil {
 		return nil, fmt.Errorf("scanning codebase: %w", err)
 	}
@@ -200,6 +285,7 @@ func (h *HandlerRegistry) archGenerate(ctx context.Context, args ArchGenerateArg
 // ArchDependenciesArgs are the arguments for arch_dependencies.
 type ArchDependenciesArgs struct {
 	Path string `json:"path"`
+	ScanControl
 }
 
 // ArchDependenciesResult is the result of arch_dependencies.
@@ -214,7 +300,7 @@ func (h *HandlerRegistry) archDependencies(ctx context.Context, args ArchDepende
 		return nil, fmt.Errorf("path is required")
 	}
 
-	graph, err := h.scanner.Scan(args.Path)
+	graph, _, err := h.scanPath(ctx, args.Path, args.ScanControl)
 	if err != nil {
 		return nil, fmt.Errorf("scanning codebase: %w", err)
 	}
@@ -291,11 +377,9 @@ func containsDot(s string) bool {
 	return false
 }
 
-// Placeholder implementations for remaining tools.
-// These will be fully implemented in subsequent development weeks.
-
 type ArchDataflowArgs struct {
 	Path string `json:"path"`
+	ScanControl
 }
 
 type ArchDataflowResult struct {
@@ -309,7 +393,7 @@ func (h *HandlerRegistry) archDataflow(ctx context.Context, args ArchDataflowArg
 		return nil, fmt.Errorf("path is required")
 	}
 
-	graph, err := h.scanner.Scan(args.Path)
+	graph, _, err := h.scanPath(ctx, args.Path, args.ScanControl)
 	if err != nil {
 		return nil, fmt.Errorf("scanning codebase: %w", err)
 	}
@@ -451,6 +535,7 @@ func (h *HandlerRegistry) archDrift(_ context.Context, args ArchDriftArgs) (*mod
 
 type ArchValidateArgs struct {
 	Path string `json:"path"`
+	ScanControl
 }
 
 type ArchValidateResult struct {
@@ -464,7 +549,7 @@ func (h *HandlerRegistry) archValidate(ctx context.Context, args ArchValidateArg
 		return nil, fmt.Errorf("path is required")
 	}
 
-	graph, err := h.scanner.Scan(args.Path)
+	graph, _, err := h.scanPath(ctx, args.Path, args.ScanControl)
 	if err != nil {
 		return nil, fmt.Errorf("scanning codebase: %w", err)
 	}
@@ -567,6 +652,7 @@ type ArchSnapshotArgs struct {
 	Path       string `json:"path"`
 	OutputFile string `json:"output_file,omitempty"`
 	Label      string `json:"label,omitempty"`
+	ScanControl
 }
 
 type ArchSnapshotResult struct {
@@ -576,12 +662,12 @@ type ArchSnapshotResult struct {
 	Summary   string `json:"summary"`
 }
 
-func (h *HandlerRegistry) archSnapshot(_ context.Context, args ArchSnapshotArgs) (*ArchSnapshotResult, error) {
+func (h *HandlerRegistry) archSnapshot(ctx context.Context, args ArchSnapshotArgs) (*ArchSnapshotResult, error) {
 	if args.Path == "" {
 		return nil, fmt.Errorf("path is required")
 	}
 
-	graph, err := h.scanner.Scan(args.Path)
+	graph, _, err := h.scanPath(ctx, args.Path, args.ScanControl)
 	if err != nil {
 		return nil, fmt.Errorf("scanning codebase: %w", err)
 	}
@@ -607,6 +693,7 @@ func (h *HandlerRegistry) archSnapshot(_ context.Context, args ArchSnapshotArgs)
 type ArchExplainArgs struct {
 	Path     string `json:"path"`
 	Question string `json:"question,omitempty"`
+	ScanControl
 }
 
 type ArchExplainResult struct {
@@ -619,7 +706,7 @@ func (h *HandlerRegistry) archExplain(ctx context.Context, args ArchExplainArgs)
 		return nil, fmt.Errorf("path is required")
 	}
 
-	graph, err := h.scanner.Scan(args.Path)
+	graph, _, err := h.scanPath(ctx, args.Path, args.ScanControl)
 	if err != nil {
 		return nil, fmt.Errorf("scanning codebase: %w", err)
 	}

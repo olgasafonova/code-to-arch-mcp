@@ -11,6 +11,7 @@ import (
 	"strings"
 
 	"github.com/olgasafonova/code-to-arch-mcp/internal/model"
+	"github.com/olgasafonova/code-to-arch-mcp/internal/scanner"
 )
 
 // Analyzer implements the scanner.Analyzer interface for Go source files.
@@ -29,6 +30,12 @@ func (a *Analyzer) Extensions() []string {
 // Language returns "go".
 func (a *Analyzer) Language() string {
 	return "go"
+}
+
+// Clone returns an independent copy of this analyzer.
+// The Go analyzer is stateless, so Clone just creates a new instance.
+func (a *Analyzer) Clone() scanner.Analyzer {
+	return New()
 }
 
 // Analyze parses a Go file and extracts architectural elements.

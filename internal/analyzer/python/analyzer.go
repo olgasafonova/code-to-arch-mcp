@@ -13,6 +13,7 @@ import (
 	"github.com/smacker/go-tree-sitter/python"
 
 	"github.com/olgasafonova/code-to-arch-mcp/internal/model"
+	"github.com/olgasafonova/code-to-arch-mcp/internal/scanner"
 )
 
 // Analyzer implements the scanner.Analyzer interface for Python files.
@@ -35,6 +36,12 @@ func (a *Analyzer) Extensions() []string {
 // Language returns "python".
 func (a *Analyzer) Language() string {
 	return "python"
+}
+
+// Clone returns an independent copy with a fresh tree-sitter parser.
+// Tree-sitter parsers are not thread-safe; each goroutine needs its own.
+func (a *Analyzer) Clone() scanner.Analyzer {
+	return New()
 }
 
 // Analyze parses a Python file and extracts architectural elements.

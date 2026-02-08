@@ -14,4 +14,8 @@ type Analyzer interface {
 
 	// Language returns the language name for metadata.
 	Language() string
+
+	// Clone returns an independent copy safe for use in a separate goroutine.
+	// Tree-sitter parsers are not thread-safe; each worker needs its own instance.
+	Clone() Analyzer
 }
