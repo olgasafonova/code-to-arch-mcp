@@ -1,6 +1,7 @@
 package drift
 
 import (
+	"context"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -46,7 +47,7 @@ func initHistoryRepo(t *testing.T, count int) string {
 func TestGetSignificantCommits(t *testing.T) {
 	repoDir := initHistoryRepo(t, 5)
 
-	commits, err := GetSignificantCommits(repoDir, 10)
+	commits, err := GetSignificantCommits(context.Background(), repoDir, 10)
 	if err != nil {
 		t.Fatalf("GetSignificantCommits failed: %v", err)
 	}
@@ -77,7 +78,7 @@ func TestGetSignificantCommits(t *testing.T) {
 func TestGetSignificantCommits_Limit(t *testing.T) {
 	repoDir := initHistoryRepo(t, 5)
 
-	commits, err := GetSignificantCommits(repoDir, 2)
+	commits, err := GetSignificantCommits(context.Background(), repoDir, 2)
 	if err != nil {
 		t.Fatalf("GetSignificantCommits failed: %v", err)
 	}
@@ -91,7 +92,7 @@ func TestGetSignificantCommits_MaxLimit(t *testing.T) {
 	repoDir := initHistoryRepo(t, 3)
 
 	// Limit is capped at 20
-	commits, err := GetSignificantCommits(repoDir, 100)
+	commits, err := GetSignificantCommits(context.Background(), repoDir, 100)
 	if err != nil {
 		t.Fatalf("GetSignificantCommits failed: %v", err)
 	}

@@ -23,27 +23,15 @@ func JSON(graph *model.ArchGraph, opts Options) string {
 		title = "Architecture"
 	}
 
-	nodes := FilterNodesByViewLevel(graph.Nodes(), opts.ViewLevel)
-	visibleIDs := make(map[string]bool)
-	for _, n := range nodes {
-		visibleIDs[n.ID] = true
-	}
-
-	// Filter edges to only include those between visible nodes
-	var edges []*model.Edge
-	for _, e := range graph.Edges() {
-		if visibleIDs[e.Source] && visibleIDs[e.Target] {
-			edges = append(edges, e)
-		}
-	}
+	vg := FilterGraph(graph, opts.ViewLevel)
 
 	out := jsonOutput{
 		Title:     title,
 		ViewLevel: string(opts.ViewLevel),
 		RootPath:  graph.RootPath,
 		Topology:  string(graph.Topology),
-		Nodes:     nodes,
-		Edges:     edges,
+		Nodes:     vg.Nodes,
+		Edges:     vg.Edges,
 	}
 
 	// Ensure empty slices serialize as [] not null

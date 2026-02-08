@@ -18,6 +18,7 @@ import (
 	"github.com/olgasafonova/code-to-arch-mcp/internal/infra"
 	"github.com/olgasafonova/code-to-arch-mcp/internal/model"
 	"github.com/olgasafonova/code-to-arch-mcp/internal/render"
+	"github.com/olgasafonova/code-to-arch-mcp/internal/safepath"
 	"github.com/olgasafonova/code-to-arch-mcp/internal/scanner"
 )
 
@@ -157,7 +158,8 @@ func (h *HandlerRegistry) scanPath(ctx context.Context, path string, sc ScanCont
 
 // ArchScanArgs are the arguments for arch_scan.
 type ArchScanArgs struct {
-	Path string `json:"path"`
+	Path   string `json:"path"`
+	Detail string `json:"detail,omitempty"` // "summary" (default) or "full"
 	ScanControl
 }
 
@@ -167,16 +169,16 @@ type ArchScanResult struct {
 	Topology  string             `json:"topology"`
 	NodeCount int                `json:"node_count"`
 	EdgeCount int                `json:"edge_count"`
-	Nodes     []*model.Node      `json:"nodes"`
-	Edges     []*model.Edge      `json:"edges"`
+	Nodes     []*model.Node      `json:"nodes,omitempty"`
+	Edges     []*model.Edge      `json:"edges,omitempty"`
 	Summary   string             `json:"summary"`
 	Stats     *scanner.ScanStats `json:"stats,omitempty"`
 	Truncated bool               `json:"truncated,omitempty"`
 }
 
 func (h *HandlerRegistry) archScan(ctx context.Context, args ArchScanArgs) (*ArchScanResult, error) {
-	if args.Path == "" {
-		return nil, fmt.Errorf("path is required")
+	if err := safepath.ValidateScanPath(args.Path); err != nil {
+		return nil, err
 	}
 
 	result, err := h.cachedScan(ctx, args.Path, args.toScanOptions())
@@ -191,17 +193,23 @@ func (h *HandlerRegistry) archScan(ctx context.Context, args ArchScanArgs) (*Arc
 		graph.Topology = boundaries.Topology
 	}
 
-	return &ArchScanResult{
+	res := &ArchScanResult{
 		RootPath:  graph.RootPath,
 		Topology:  string(graph.Topology),
 		NodeCount: graph.NodeCount(),
 		EdgeCount: graph.EdgeCount(),
-		Nodes:     graph.Nodes(),
-		Edges:     graph.Edges(),
 		Summary:   graph.Summary(),
 		Stats:     &result.Stats,
 		Truncated: result.Truncated,
-	}, nil
+	}
+
+	if strings.EqualFold(args.Detail, "full") {
+		graph.RelativePaths()
+		res.Nodes = graph.Nodes()
+		res.Edges = graph.Edges()
+	}
+
+	return res, nil
 }
 
 // ArchFocusArgs are the arguments for arch_focus.
@@ -232,8 +240,8 @@ type ArchGenerateResult struct {
 }
 
 func (h *HandlerRegistry) archGenerate(ctx context.Context, args ArchGenerateArgs) (*ArchGenerateResult, error) {
-	if args.Path == "" {
-		return nil, fmt.Errorf("path is required")
+	if err := safepath.ValidateScanPath(args.Path); err != nil {
+		return nil, err
 	}
 
 	graph, _, err := h.scanPath(ctx, args.Path, args.ScanControl)
@@ -296,8 +304,8 @@ type ArchDependenciesResult struct {
 }
 
 func (h *HandlerRegistry) archDependencies(ctx context.Context, args ArchDependenciesArgs) (*ArchDependenciesResult, error) {
-	if args.Path == "" {
-		return nil, fmt.Errorf("path is required")
+	if err := safepath.ValidateScanPath(args.Path); err != nil {
+		return nil, err
 	}
 
 	graph, _, err := h.scanPath(ctx, args.Path, args.ScanControl)
@@ -389,8 +397,8 @@ type ArchDataflowResult struct {
 }
 
 func (h *HandlerRegistry) archDataflow(ctx context.Context, args ArchDataflowArgs) (*ArchDataflowResult, error) {
-	if args.Path == "" {
-		return nil, fmt.Errorf("path is required")
+	if err := safepath.ValidateScanPath(args.Path); err != nil {
+		return nil, err
 	}
 
 	graph, _, err := h.scanPath(ctx, args.Path, args.ScanControl)
@@ -433,8 +441,8 @@ type ArchBoundariesResult struct {
 }
 
 func (h *HandlerRegistry) archBoundaries(_ context.Context, args ArchBoundariesArgs) (*ArchBoundariesResult, error) {
-	if args.Path == "" {
-		return nil, fmt.Errorf("path is required")
+	if err := safepath.ValidateScanPath(args.Path); err != nil {
+		return nil, err
 	}
 
 	result, err := detector.DetectBoundaries(args.Path)
@@ -464,9 +472,12 @@ type ArchDiffArgs struct {
 	SnapshotFile string `json:"snapshot_file"`
 }
 
-func (h *HandlerRegistry) archDiff(_ context.Context, args ArchDiffArgs) (*model.DiffReport, error) {
-	if args.Path == "" || args.SnapshotFile == "" {
-		return nil, fmt.Errorf("path and snapshot_file are required")
+func (h *HandlerRegistry) archDiff(ctx context.Context, args ArchDiffArgs) (*model.DiffReport, error) {
+	if err := safepath.ValidateScanPath(args.Path); err != nil {
+		return nil, err
+	}
+	if args.SnapshotFile == "" {
+		return nil, fmt.Errorf("snapshot_file is required")
 	}
 
 	// Load baseline from snapshot
@@ -477,12 +488,12 @@ func (h *HandlerRegistry) archDiff(_ context.Context, args ArchDiffArgs) (*model
 	baseline := snapshot.ToGraph()
 
 	// Scan current codebase
-	current, err := h.scanner.Scan(args.Path)
-	if err != nil {
-		return nil, fmt.Errorf("scanning current codebase: %w", err)
+	result, scanErr := h.cachedScan(ctx, args.Path, scanner.DefaultScanOptions())
+	if scanErr != nil && !errors.Is(scanErr, scanner.ErrLimitReached) {
+		return nil, fmt.Errorf("scanning current codebase: %w", scanErr)
 	}
 
-	report := drift.Compare(baseline, current)
+	report := drift.Compare(baseline, result.Graph)
 	report.BaseRef = args.SnapshotFile
 	report.CompareRef = "current"
 	return report, nil
@@ -494,9 +505,12 @@ type ArchDriftArgs struct {
 	HeadRef string `json:"head_ref,omitempty"`
 }
 
-func (h *HandlerRegistry) archDrift(_ context.Context, args ArchDriftArgs) (*model.DiffReport, error) {
-	if args.Path == "" || args.BaseRef == "" {
-		return nil, fmt.Errorf("path and base_ref are required")
+func (h *HandlerRegistry) archDrift(ctx context.Context, args ArchDriftArgs) (*model.DiffReport, error) {
+	if err := safepath.ValidateScanPath(args.Path); err != nil {
+		return nil, err
+	}
+	if args.BaseRef == "" {
+		return nil, fmt.Errorf("base_ref is required")
 	}
 	headRef := args.HeadRef
 	if headRef == "" {
@@ -504,7 +518,7 @@ func (h *HandlerRegistry) archDrift(_ context.Context, args ArchDriftArgs) (*mod
 	}
 
 	// Checkout and scan base ref
-	basePath, baseCleanup, err := drift.CheckoutRef(args.Path, args.BaseRef)
+	basePath, baseCleanup, err := drift.CheckoutRef(ctx, args.Path, args.BaseRef)
 	if err != nil {
 		return nil, fmt.Errorf("checking out base ref %s: %w", args.BaseRef, err)
 	}
@@ -516,7 +530,7 @@ func (h *HandlerRegistry) archDrift(_ context.Context, args ArchDriftArgs) (*mod
 	}
 
 	// Checkout and scan head ref
-	headPath, headCleanup, err := drift.CheckoutRef(args.Path, headRef)
+	headPath, headCleanup, err := drift.CheckoutRef(ctx, args.Path, headRef)
 	if err != nil {
 		return nil, fmt.Errorf("checking out head ref %s: %w", headRef, err)
 	}
@@ -545,8 +559,8 @@ type ArchValidateResult struct {
 }
 
 func (h *HandlerRegistry) archValidate(ctx context.Context, args ArchValidateArgs) (*ArchValidateResult, error) {
-	if args.Path == "" {
-		return nil, fmt.Errorf("path is required")
+	if err := safepath.ValidateScanPath(args.Path); err != nil {
+		return nil, err
 	}
 
 	graph, _, err := h.scanPath(ctx, args.Path, args.ScanControl)
@@ -577,16 +591,16 @@ type ArchHistoryResult struct {
 	Summary string               `json:"summary"`
 }
 
-func (h *HandlerRegistry) archHistory(_ context.Context, args ArchHistoryArgs) (*ArchHistoryResult, error) {
-	if args.Path == "" {
-		return nil, fmt.Errorf("path is required")
+func (h *HandlerRegistry) archHistory(ctx context.Context, args ArchHistoryArgs) (*ArchHistoryResult, error) {
+	if err := safepath.ValidateScanPath(args.Path); err != nil {
+		return nil, err
 	}
 	limit := args.Limit
 	if limit <= 0 {
 		limit = 10
 	}
 
-	commits, err := drift.GetSignificantCommits(args.Path, limit)
+	commits, err := drift.GetSignificantCommits(ctx, args.Path, limit)
 	if err != nil {
 		return nil, fmt.Errorf("getting git history: %w", err)
 	}
@@ -597,7 +611,7 @@ func (h *HandlerRegistry) archHistory(_ context.Context, args ArchHistoryArgs) (
 	// Walk commits in reverse (oldest first) to compare sequentially
 	for i := len(commits) - 1; i >= 0; i-- {
 		c := commits[i]
-		worktree, cleanup, err := drift.CheckoutRef(args.Path, c.Hash)
+		worktree, cleanup, err := drift.CheckoutRef(ctx, args.Path, c.Hash)
 		if err != nil {
 			entries = append(entries, drift.HistoryEntry{
 				Ref:     c.Hash[:8],
@@ -663,8 +677,8 @@ type ArchSnapshotResult struct {
 }
 
 func (h *HandlerRegistry) archSnapshot(ctx context.Context, args ArchSnapshotArgs) (*ArchSnapshotResult, error) {
-	if args.Path == "" {
-		return nil, fmt.Errorf("path is required")
+	if err := safepath.ValidateScanPath(args.Path); err != nil {
+		return nil, err
 	}
 
 	graph, _, err := h.scanPath(ctx, args.Path, args.ScanControl)
@@ -702,8 +716,8 @@ type ArchExplainResult struct {
 }
 
 func (h *HandlerRegistry) archExplain(ctx context.Context, args ArchExplainArgs) (*ArchExplainResult, error) {
-	if args.Path == "" {
-		return nil, fmt.Errorf("path is required")
+	if err := safepath.ValidateScanPath(args.Path); err != nil {
+		return nil, err
 	}
 
 	graph, _, err := h.scanPath(ctx, args.Path, args.ScanControl)

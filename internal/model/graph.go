@@ -4,6 +4,7 @@ package model
 
 import (
 	"fmt"
+	"path/filepath"
 	"sort"
 	"strings"
 	"sync"
@@ -256,6 +257,19 @@ func (g *ArchGraph) HasCycle() bool {
 	return false
 }
 
+// RelativePaths converts absolute node paths to paths relative to the graph root.
+func (g *ArchGraph) RelativePaths() {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+
+	prefix := g.RootPath + "/"
+	for _, n := range g.nodes {
+		if rel, ok := strings.CutPrefix(n.Path, prefix); ok {
+			n.Path = rel
+		}
+	}
+}
+
 // Summary returns a human-readable summary of the graph.
 func (g *ArchGraph) Summary() string {
 	g.mu.RLock()
@@ -274,7 +288,7 @@ func (g *ArchGraph) Summary() string {
 	var sb strings.Builder
 	fmt.Fprintf(&sb, "Architecture Graph: %d nodes, %d edges\n", len(g.nodes), len(g.edges))
 	fmt.Fprintf(&sb, "Topology: %s\n", g.Topology)
-	fmt.Fprintf(&sb, "Root: %s\n", g.RootPath)
+	fmt.Fprintf(&sb, "Root: %s\n", filepath.Base(g.RootPath))
 
 	if len(typeCounts) > 0 {
 		sb.WriteString("Nodes: ")

@@ -12,6 +12,7 @@ import (
 	sitter "github.com/smacker/go-tree-sitter"
 	"github.com/smacker/go-tree-sitter/python"
 
+	"github.com/olgasafonova/code-to-arch-mcp/internal/analyzer/common"
 	"github.com/olgasafonova/code-to-arch-mcp/internal/model"
 	"github.com/olgasafonova/code-to-arch-mcp/internal/scanner"
 )
@@ -55,6 +56,7 @@ func (a *Analyzer) Analyze(path string) ([]*model.Node, []*model.Edge, error) {
 	if err != nil {
 		return nil, nil, fmt.Errorf("parsing %s: %w", path, err)
 	}
+	defer tree.Close()
 	root := tree.RootNode()
 
 	dir := filepath.Base(filepath.Dir(path))
@@ -116,7 +118,7 @@ func extractImports(root *sitter.Node, src []byte, modID string) ([]*model.Node,
 			Label:  importPath,
 		})
 
-		infraNodes, infraEdges := classifyImport(importPath, modID)
+		infraNodes, infraEdges := common.ClassifyImport(importPath, modID, infraPatterns, ".")
 		nodes = append(nodes, infraNodes...)
 		edges = append(edges, infraEdges...)
 	}
@@ -151,78 +153,36 @@ func extractFromModule(node *sitter.Node, src []byte) string {
 	return ""
 }
 
-// Infrastructure package patterns for Python.
-var infraPatterns = []struct {
-	packages []string
-	nodeType model.NodeType
-	edgeType model.EdgeType
-	nodeID   string
-	nodeName string
-}{
+// infraPatterns defines Python infrastructure package patterns.
+var infraPatterns = []common.InfraPattern{
 	{
-		packages: []string{"sqlalchemy", "django.db", "pymongo", "psycopg2", "mysql.connector", "sqlite3", "tortoise", "peewee", "databases", "asyncpg"},
-		nodeType: model.NodeDatabase,
-		edgeType: model.EdgeReadWrite,
-		nodeID:   "infra:database",
-		nodeName: "Database",
+		Packages: []string{"sqlalchemy", "django.db", "pymongo", "psycopg2", "mysql.connector", "sqlite3", "tortoise", "peewee", "databases", "asyncpg"},
+		NodeType: model.NodeDatabase,
+		EdgeType: model.EdgeReadWrite,
+		NodeID:   "infra:database",
+		NodeName: "Database",
 	},
 	{
-		packages: []string{"celery", "kombu", "pika", "kafka", "rq", "dramatiq"},
-		nodeType: model.NodeQueue,
-		edgeType: model.EdgePublish,
-		nodeID:   "infra:queue",
-		nodeName: "Message Queue",
+		Packages: []string{"celery", "kombu", "pika", "kafka", "rq", "dramatiq"},
+		NodeType: model.NodeQueue,
+		EdgeType: model.EdgePublish,
+		NodeID:   "infra:queue",
+		NodeName: "Message Queue",
 	},
 	{
-		packages: []string{"redis", "pymemcache", "aiocache", "django.core.cache", "cachetools"},
-		nodeType: model.NodeCache,
-		edgeType: model.EdgeReadWrite,
-		nodeID:   "infra:cache",
-		nodeName: "Cache",
+		Packages: []string{"redis", "pymemcache", "aiocache", "django.core.cache", "cachetools"},
+		NodeType: model.NodeCache,
+		EdgeType: model.EdgeReadWrite,
+		NodeID:   "infra:cache",
+		NodeName: "Cache",
 	},
 	{
-		packages: []string{"requests", "httpx", "aiohttp", "urllib3", "httplib2"},
-		nodeType: model.NodeExternalAPI,
-		edgeType: model.EdgeAPICall,
-		nodeID:   "infra:external_api",
-		nodeName: "External API",
+		Packages: []string{"requests", "httpx", "aiohttp", "urllib3", "httplib2"},
+		NodeType: model.NodeExternalAPI,
+		EdgeType: model.EdgeAPICall,
+		NodeID:   "infra:external_api",
+		NodeName: "External API",
 	},
-}
-
-func classifyImport(importPath, modID string) ([]*model.Node, []*model.Edge) {
-	var nodes []*model.Node
-	var edges []*model.Edge
-
-	for _, pattern := range infraPatterns {
-		if matchesAny(importPath, pattern.packages) {
-			nodes = append(nodes, &model.Node{
-				ID:   pattern.nodeID,
-				Name: pattern.nodeName,
-				Type: pattern.nodeType,
-				Properties: map[string]string{
-					"detected_via": importPath,
-				},
-			})
-			edges = append(edges, &model.Edge{
-				Source: modID,
-				Target: pattern.nodeID,
-				Type:   pattern.edgeType,
-				Label:  pattern.nodeName,
-			})
-			return nodes, edges
-		}
-	}
-	return nil, nil
-}
-
-// matchesAny checks if importPath matches any pattern exactly or as a prefix.
-func matchesAny(importPath string, patterns []string) bool {
-	for _, p := range patterns {
-		if importPath == p || strings.HasPrefix(importPath, p+".") {
-			return true
-		}
-	}
-	return false
 }
 
 // HTTP methods recognized as route decorators.
@@ -236,7 +196,7 @@ func extractRoutes(root *sitter.Node, src []byte, modID, filePath string) ([]*mo
 	var nodes []*model.Node
 	var edges []*model.Edge
 
-	walkTree(root, func(node *sitter.Node) {
+	common.WalkTree(root, func(node *sitter.Node) {
 		if node.Type() != "decorated_definition" {
 			return
 		}
@@ -289,7 +249,7 @@ func extractRoutes(root *sitter.Node, src []byte, modID, filePath string) ([]*mo
 // extractDecoratorRoute parses a decorator like @app.route('/path') or @app.get('/path').
 func extractDecoratorRoute(decorator *sitter.Node, src []byte) (method, routePath string) {
 	// Walk decorator children to find the call expression
-	walkTree(decorator, func(node *sitter.Node) {
+	common.WalkTree(decorator, func(node *sitter.Node) {
 		if routePath != "" {
 			return // already found
 		}
@@ -356,12 +316,4 @@ func stripPythonString(s string) string {
 		}
 	}
 	return s
-}
-
-// walkTree performs a depth-first traversal calling fn for each node.
-func walkTree(node *sitter.Node, fn func(*sitter.Node)) {
-	fn(node)
-	for i := 0; i < int(node.ChildCount()); i++ {
-		walkTree(node.Child(i), fn)
-	}
 }

@@ -1,6 +1,7 @@
 package drift
 
 import (
+	"context"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -60,7 +61,7 @@ func TestCheckoutRef_ValidRef(t *testing.T) {
 	}
 	firstCommit := string(out[:len(out)-1]) // trim newline
 
-	worktree, cleanup, err := CheckoutRef(repoDir, firstCommit)
+	worktree, cleanup, err := CheckoutRef(context.Background(), repoDir, firstCommit)
 	if err != nil {
 		t.Fatalf("CheckoutRef failed: %v", err)
 	}
@@ -78,7 +79,7 @@ func TestCheckoutRef_ValidRef(t *testing.T) {
 func TestCheckoutRef_InvalidRef(t *testing.T) {
 	repoDir := initGitRepo(t)
 
-	_, _, err := CheckoutRef(repoDir, "nonexistent-ref-abc123")
+	_, _, err := CheckoutRef(context.Background(), repoDir, "nonexistent-ref-abc123")
 	if err == nil {
 		t.Fatal("expected error for invalid ref")
 	}
@@ -87,7 +88,7 @@ func TestCheckoutRef_InvalidRef(t *testing.T) {
 func TestCheckoutRef_Cleanup(t *testing.T) {
 	repoDir := initGitRepo(t)
 
-	worktree, cleanup, err := CheckoutRef(repoDir, "HEAD")
+	worktree, cleanup, err := CheckoutRef(context.Background(), repoDir, "HEAD")
 	if err != nil {
 		t.Fatalf("CheckoutRef failed: %v", err)
 	}
@@ -108,7 +109,7 @@ func TestCheckoutRef_Cleanup(t *testing.T) {
 func TestCheckoutRef_HEAD(t *testing.T) {
 	repoDir := initGitRepo(t)
 
-	worktree, cleanup, err := CheckoutRef(repoDir, "HEAD")
+	worktree, cleanup, err := CheckoutRef(context.Background(), repoDir, "HEAD")
 	if err != nil {
 		t.Fatalf("CheckoutRef HEAD failed: %v", err)
 	}
@@ -120,5 +121,33 @@ func TestCheckoutRef_HEAD(t *testing.T) {
 	}
 	if _, err := os.Stat(filepath.Join(worktree, "utils.go")); err != nil {
 		t.Fatal("expected utils.go at HEAD")
+	}
+}
+
+func TestValidateRef_Valid(t *testing.T) {
+	for _, ref := range []string{"main", "v1.0", "abc123", "HEAD", "feature/foo", "HEAD~1", "HEAD^2"} {
+		if err := ValidateRef(ref); err != nil {
+			t.Errorf("expected valid ref %q, got: %v", ref, err)
+		}
+	}
+}
+
+func TestValidateRef_Empty(t *testing.T) {
+	if err := ValidateRef(""); err == nil {
+		t.Fatal("expected error for empty ref")
+	}
+}
+
+func TestValidateRef_DashPrefix(t *testing.T) {
+	if err := ValidateRef("--flag"); err == nil {
+		t.Fatal("expected error for dash-prefixed ref")
+	}
+}
+
+func TestValidateRef_InvalidChars(t *testing.T) {
+	for _, ref := range []string{"foo;bar", "ref$(cmd)", "a b", "foo`bar`", "ref|pipe"} {
+		if err := ValidateRef(ref); err == nil {
+			t.Errorf("expected error for ref with invalid chars: %q", ref)
+		}
 	}
 }

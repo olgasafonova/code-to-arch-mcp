@@ -64,31 +64,20 @@ func Mermaid(graph *model.ArchGraph, opts Options) string {
 	fmt.Fprintf(&sb, "---\ntitle: %s\n---\n", title)
 	fmt.Fprintf(&sb, "graph %s\n", direction)
 
-	nodes := graph.Nodes()
-	edges := graph.Edges()
-
-	// Filter nodes by view level
-	visible := FilterNodesByViewLevel(nodes, opts.ViewLevel)
-	visibleIDs := make(map[string]bool)
-	for _, n := range visible {
-		visibleIDs[n.ID] = true
-	}
+	vg := FilterGraph(graph, opts.ViewLevel)
 
 	// Render nodes grouped by type
-	renderNodeGroup(&sb, visible, model.NodeService, "Services")
-	renderNodeGroup(&sb, visible, model.NodeModule, "Modules")
-	renderNodeGroup(&sb, visible, model.NodePackage, "Packages")
-	renderNodeGroup(&sb, visible, model.NodeDatabase, "Data Stores")
-	renderNodeGroup(&sb, visible, model.NodeQueue, "Message Queues")
-	renderNodeGroup(&sb, visible, model.NodeCache, "Caches")
-	renderNodeGroup(&sb, visible, model.NodeExternalAPI, "External APIs")
-	renderNodeGroup(&sb, visible, model.NodeEndpoint, "Endpoints")
+	renderNodeGroup(&sb, vg.Nodes, model.NodeService, "Services")
+	renderNodeGroup(&sb, vg.Nodes, model.NodeModule, "Modules")
+	renderNodeGroup(&sb, vg.Nodes, model.NodePackage, "Packages")
+	renderNodeGroup(&sb, vg.Nodes, model.NodeDatabase, "Data Stores")
+	renderNodeGroup(&sb, vg.Nodes, model.NodeQueue, "Message Queues")
+	renderNodeGroup(&sb, vg.Nodes, model.NodeCache, "Caches")
+	renderNodeGroup(&sb, vg.Nodes, model.NodeExternalAPI, "External APIs")
+	renderNodeGroup(&sb, vg.Nodes, model.NodeEndpoint, "Endpoints")
 
 	// Render edges between visible nodes
-	for _, e := range edges {
-		if !visibleIDs[e.Source] || !visibleIDs[e.Target] {
-			continue
-		}
+	for _, e := range vg.Edges {
 		label := e.Label
 		if label == "" {
 			label = string(e.Type)

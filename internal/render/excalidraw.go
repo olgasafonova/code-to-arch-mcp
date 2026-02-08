@@ -55,18 +55,13 @@ type excalidrawBinding struct {
 
 // Excalidraw renders an ArchGraph as Excalidraw JSON.
 func Excalidraw(graph *model.ArchGraph, opts Options) string {
-	nodes := FilterNodesByViewLevel(graph.Nodes(), opts.ViewLevel)
-	visibleIDs := make(map[string]bool)
+	vg := FilterGraph(graph, opts.ViewLevel)
 	nodePositions := make(map[string][2]int) // id -> [x, y]
-
-	for _, n := range nodes {
-		visibleIDs[n.ID] = true
-	}
 
 	elements := make([]excalidrawElement, 0)
 
 	// Create rectangle + text elements for each node
-	for i, n := range nodes {
+	for i, n := range vg.Nodes {
 		col := i % excaliColsPerRow
 		row := i / excaliColsPerRow
 		x := excaliMarginX + col*(excaliCellWidth+excaliGapX)
@@ -107,11 +102,7 @@ func Excalidraw(graph *model.ArchGraph, opts Options) string {
 	}
 
 	// Create arrow elements for edges
-	for i, e := range graph.Edges() {
-		if !visibleIDs[e.Source] || !visibleIDs[e.Target] {
-			continue
-		}
-
+	for i, e := range vg.Edges {
 		srcPos := nodePositions[e.Source]
 		tgtPos := nodePositions[e.Target]
 		arrowID := fmt.Sprintf("arrow_%d", i)

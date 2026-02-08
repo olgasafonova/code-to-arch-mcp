@@ -42,11 +42,11 @@ type ScanResult struct {
 
 // ScanStats contains metrics about the scan.
 type ScanStats struct {
-	FilesAnalyzed int
-	FilesSkipped  int
-	NodesFound    int
-	EdgesFound    int
-	Duration      time.Duration
+	FilesAnalyzed int   `json:"files_analyzed"`
+	FilesSkipped  int   `json:"files_skipped"`
+	NodesFound    int   `json:"nodes_found"`
+	EdgesFound    int   `json:"edges_found"`
+	DurationMs    int64 `json:"duration_ms"`
 }
 
 // Scanner walks a codebase directory and delegates files to registered analyzers.
@@ -304,7 +304,7 @@ func (s *Scanner) ScanWithOptions(ctx context.Context, rootPath string, opts Sca
 		}
 	}
 
-	stats.Duration = time.Since(start)
+	stats.DurationMs = time.Since(start).Milliseconds()
 
 	// Context cancellation produces a partial result, not a hard error
 	if ctx.Err() != nil {
@@ -318,7 +318,7 @@ func (s *Scanner) ScanWithOptions(ctx context.Context, rootPath string, opts Sca
 		"edges", stats.EdgesFound,
 		"workers", workers,
 		"truncated", truncated,
-		"duration", stats.Duration,
+		"duration_ms", stats.DurationMs,
 	)
 
 	result := &ScanResult{

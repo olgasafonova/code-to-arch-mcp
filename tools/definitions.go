@@ -27,8 +27,7 @@ var AllTools = []ToolSpec{
 		Description: `Analyze a codebase directory and generate an architecture model.
 USE WHEN the user wants to understand the overall architecture of a project,
 discover services, dependencies, and infrastructure components.
-Returns a structured architecture graph with nodes (services, modules, databases,
-queues) and edges (dependencies, API calls, data flows).`,
+Returns a summary by default; set detail="full" for the complete node/edge graph.`,
 		Category:   "analysis",
 		ReadOnly:   true,
 		Idempotent: true,
@@ -37,10 +36,9 @@ queues) and edges (dependencies, API calls, data flows).`,
 		Name:   "arch_focus",
 		Method: "ArchFocus",
 		Title:  "Focus on Subsystem",
-		Description: `Analyze a specific subsystem or service within a codebase.
-USE WHEN the user wants to zoom into a particular service, module, or directory
-rather than scanning the entire project.
-Accepts a subdirectory path and returns the architecture of just that component.`,
+		Description: `Analyze a specific subdirectory or service within a codebase.
+USE WHEN the user wants to zoom into one service or module, not the entire project.
+Pass a subdirectory path; returns the same format as arch_scan scoped to that subtree.`,
 		Category:   "analysis",
 		ReadOnly:   true,
 		Idempotent: true,

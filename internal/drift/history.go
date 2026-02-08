@@ -1,6 +1,7 @@
 package drift
 
 import (
+	"context"
 	"fmt"
 	"os/exec"
 	"strings"
@@ -25,7 +26,7 @@ type HistoryEntry struct {
 }
 
 // GetSignificantCommits returns the N most recent non-merge commits.
-func GetSignificantCommits(repoPath string, limit int) ([]GitLogEntry, error) {
+func GetSignificantCommits(ctx context.Context, repoPath string, limit int) ([]GitLogEntry, error) {
 	if limit <= 0 {
 		limit = 10
 	}
@@ -33,7 +34,7 @@ func GetSignificantCommits(repoPath string, limit int) ([]GitLogEntry, error) {
 		limit = 20
 	}
 
-	cmd := exec.Command("git", "log",
+	cmd := exec.CommandContext(ctx, "git", "log",
 		fmt.Sprintf("--format=%%H|%%aI|%%s"),
 		fmt.Sprintf("-n%d", limit),
 		"--no-merges",

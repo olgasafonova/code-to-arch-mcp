@@ -21,11 +21,7 @@ const (
 func DrawIO(graph *model.ArchGraph, opts Options) string {
 	var sb strings.Builder
 
-	nodes := FilterNodesByViewLevel(graph.Nodes(), opts.ViewLevel)
-	visibleIDs := make(map[string]bool)
-	for _, n := range nodes {
-		visibleIDs[n.ID] = true
-	}
+	vg := FilterGraph(graph, opts.ViewLevel)
 
 	sb.WriteString("<mxGraphModel>\n")
 	sb.WriteString("  <root>\n")
@@ -33,7 +29,7 @@ func DrawIO(graph *model.ArchGraph, opts Options) string {
 	sb.WriteString("    <mxCell id=\"1\" parent=\"0\"/>\n")
 
 	// Layout nodes in a grid
-	for i, n := range nodes {
+	for i, n := range vg.Nodes {
 		id := SanitizeID(n.ID)
 		style := drawIOStyle(n.Type)
 		col := i % drawIOColsPerRow
@@ -49,10 +45,7 @@ func DrawIO(graph *model.ArchGraph, opts Options) string {
 	}
 
 	// Render edges
-	for i, e := range graph.Edges() {
-		if !visibleIDs[e.Source] || !visibleIDs[e.Target] {
-			continue
-		}
+	for i, e := range vg.Edges {
 		label := e.Label
 		if label == "" {
 			label = string(e.Type)

@@ -16,11 +16,7 @@ func C4(graph *model.ArchGraph, opts Options) string {
 		title = "Architecture"
 	}
 
-	nodes := FilterNodesByViewLevel(graph.Nodes(), opts.ViewLevel)
-	visibleIDs := make(map[string]bool)
-	for _, n := range nodes {
-		visibleIDs[n.ID] = true
-	}
+	vg := FilterGraph(graph, opts.ViewLevel)
 
 	sb.WriteString("@startuml\n")
 	sb.WriteString("!include <C4/C4_Container>\n\n")
@@ -29,7 +25,7 @@ func C4(graph *model.ArchGraph, opts Options) string {
 	// External systems go outside the boundary
 	var externals []*model.Node
 	var internals []*model.Node
-	for _, n := range nodes {
+	for _, n := range vg.Nodes {
 		if n.Type == model.NodeExternalAPI {
 			externals = append(externals, n)
 		} else {
@@ -57,10 +53,7 @@ func C4(graph *model.ArchGraph, opts Options) string {
 	}
 
 	// Render relationships
-	for _, e := range graph.Edges() {
-		if !visibleIDs[e.Source] || !visibleIDs[e.Target] {
-			continue
-		}
+	for _, e := range vg.Edges {
 		label := e.Label
 		if label == "" {
 			label = string(e.Type)

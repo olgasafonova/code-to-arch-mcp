@@ -16,11 +16,7 @@ func Structurizr(graph *model.ArchGraph, opts Options) string {
 		title = "Architecture"
 	}
 
-	nodes := FilterNodesByViewLevel(graph.Nodes(), opts.ViewLevel)
-	visibleIDs := make(map[string]bool)
-	for _, n := range nodes {
-		visibleIDs[n.ID] = true
-	}
+	vg := FilterGraph(graph, opts.ViewLevel)
 
 	sb.WriteString("workspace {\n")
 	sb.WriteString("    model {\n")
@@ -28,7 +24,7 @@ func Structurizr(graph *model.ArchGraph, opts Options) string {
 	// External systems
 	var externals []*model.Node
 	var internals []*model.Node
-	for _, n := range nodes {
+	for _, n := range vg.Nodes {
 		if n.Type == model.NodeExternalAPI {
 			externals = append(externals, n)
 		} else {
@@ -52,10 +48,7 @@ func Structurizr(graph *model.ArchGraph, opts Options) string {
 	sb.WriteString("        }\n")
 
 	// Relationships
-	for _, e := range graph.Edges() {
-		if !visibleIDs[e.Source] || !visibleIDs[e.Target] {
-			continue
-		}
+	for _, e := range vg.Edges {
 		label := e.Label
 		if label == "" {
 			label = string(e.Type)

@@ -25,30 +25,20 @@ func PlantUML(graph *model.ArchGraph, opts Options) string {
 
 	sb.WriteString("\n")
 
-	nodes := graph.Nodes()
-	edges := graph.Edges()
-
-	visible := FilterNodesByViewLevel(nodes, opts.ViewLevel)
-	visibleIDs := make(map[string]bool)
-	for _, n := range visible {
-		visibleIDs[n.ID] = true
-	}
+	vg := FilterGraph(graph, opts.ViewLevel)
 
 	// Render nodes grouped by type
-	plantUMLNodeGroup(&sb, visible, model.NodeService, "Services")
-	plantUMLNodeGroup(&sb, visible, model.NodeModule, "Modules")
-	plantUMLNodeGroup(&sb, visible, model.NodePackage, "Packages")
-	plantUMLNodeGroup(&sb, visible, model.NodeDatabase, "Data Stores")
-	plantUMLNodeGroup(&sb, visible, model.NodeQueue, "Message Queues")
-	plantUMLNodeGroup(&sb, visible, model.NodeCache, "Caches")
-	plantUMLNodeGroup(&sb, visible, model.NodeExternalAPI, "External APIs")
-	plantUMLNodeGroup(&sb, visible, model.NodeEndpoint, "Endpoints")
+	plantUMLNodeGroup(&sb, vg.Nodes, model.NodeService, "Services")
+	plantUMLNodeGroup(&sb, vg.Nodes, model.NodeModule, "Modules")
+	plantUMLNodeGroup(&sb, vg.Nodes, model.NodePackage, "Packages")
+	plantUMLNodeGroup(&sb, vg.Nodes, model.NodeDatabase, "Data Stores")
+	plantUMLNodeGroup(&sb, vg.Nodes, model.NodeQueue, "Message Queues")
+	plantUMLNodeGroup(&sb, vg.Nodes, model.NodeCache, "Caches")
+	plantUMLNodeGroup(&sb, vg.Nodes, model.NodeExternalAPI, "External APIs")
+	plantUMLNodeGroup(&sb, vg.Nodes, model.NodeEndpoint, "Endpoints")
 
 	// Render edges between visible nodes
-	for _, e := range edges {
-		if !visibleIDs[e.Source] || !visibleIDs[e.Target] {
-			continue
-		}
+	for _, e := range vg.Edges {
 		label := e.Label
 		if label == "" {
 			label = string(e.Type)
