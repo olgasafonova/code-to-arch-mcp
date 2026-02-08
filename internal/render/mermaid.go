@@ -17,6 +17,8 @@ const (
 	FormatC4          Format = "c4"
 	FormatStructurizr Format = "structurizr"
 	FormatJSON        Format = "json"
+	FormatDrawIO      Format = "drawio"
+	FormatExcalidraw  Format = "excalidraw"
 )
 
 // ViewLevel controls the level of detail in rendered output.
