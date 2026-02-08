@@ -11,6 +11,7 @@ import (
 	"testing"
 
 	"github.com/olgasafonova/code-to-arch-mcp/internal/analyzer/golang"
+	"github.com/olgasafonova/code-to-arch-mcp/internal/analyzer/python"
 	"github.com/olgasafonova/code-to-arch-mcp/internal/analyzer/typescript"
 	"github.com/olgasafonova/code-to-arch-mcp/internal/model"
 	"github.com/olgasafonova/code-to-arch-mcp/internal/render"
@@ -20,7 +21,7 @@ import (
 func newScanner(t *testing.T) *scanner.Scanner {
 	t.Helper()
 	logger := slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelWarn}))
-	return scanner.New(logger, golang.New(), typescript.New())
+	return scanner.New(logger, golang.New(), typescript.New(), python.New())
 }
 
 func requireDir(t *testing.T, path string) string {

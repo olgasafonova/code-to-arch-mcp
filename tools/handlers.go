@@ -8,6 +8,7 @@ import (
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 	"github.com/olgasafonova/code-to-arch-mcp/internal/analyzer/golang"
+	"github.com/olgasafonova/code-to-arch-mcp/internal/analyzer/python"
 	"github.com/olgasafonova/code-to-arch-mcp/internal/analyzer/typescript"
 	"github.com/olgasafonova/code-to-arch-mcp/internal/detector"
 	"github.com/olgasafonova/code-to-arch-mcp/internal/drift"
@@ -26,7 +27,8 @@ type HandlerRegistry struct {
 func NewHandlerRegistry(logger *slog.Logger) *HandlerRegistry {
 	goAnalyzer := golang.New()
 	tsAnalyzer := typescript.New()
-	s := scanner.New(logger, goAnalyzer, tsAnalyzer)
+	pyAnalyzer := python.New()
+	s := scanner.New(logger, goAnalyzer, tsAnalyzer, pyAnalyzer)
 
 	return &HandlerRegistry{
 		scanner: s,
@@ -174,8 +176,18 @@ func (h *HandlerRegistry) archGenerate(ctx context.Context, args ArchGenerateArg
 		diagram = render.Mermaid(graph, opts)
 	case render.FormatPlantUML:
 		diagram = render.PlantUML(graph, opts)
+	case render.FormatC4:
+		diagram = render.C4(graph, opts)
+	case render.FormatStructurizr:
+		diagram = render.Structurizr(graph, opts)
+	case render.FormatJSON:
+		diagram = render.JSON(graph, opts)
+	case render.FormatDrawIO:
+		diagram = render.DrawIO(graph, opts)
+	case render.FormatExcalidraw:
+		diagram = render.Excalidraw(graph, opts)
 	default:
-		return nil, fmt.Errorf("unsupported format: %s (supported: mermaid, plantuml)", args.Format)
+		return nil, fmt.Errorf("unsupported format: %s (supported: mermaid, plantuml, c4, structurizr, json, drawio, excalidraw)", args.Format)
 	}
 
 	return &ArchGenerateResult{
@@ -399,12 +411,42 @@ type ArchDriftArgs struct {
 }
 
 func (h *HandlerRegistry) archDrift(_ context.Context, args ArchDriftArgs) (*model.DiffReport, error) {
-	return &model.DiffReport{
-		BaseRef:     args.BaseRef,
-		CompareRef:  args.HeadRef,
-		Summary:     "Git ref drift detection not yet implemented.",
-		MaxSeverity: model.SeverityNone,
-	}, nil
+	if args.Path == "" || args.BaseRef == "" {
+		return nil, fmt.Errorf("path and base_ref are required")
+	}
+	headRef := args.HeadRef
+	if headRef == "" {
+		headRef = "HEAD"
+	}
+
+	// Checkout and scan base ref
+	basePath, baseCleanup, err := drift.CheckoutRef(args.Path, args.BaseRef)
+	if err != nil {
+		return nil, fmt.Errorf("checking out base ref %s: %w", args.BaseRef, err)
+	}
+	defer baseCleanup()
+
+	baseGraph, err := h.scanner.Scan(basePath)
+	if err != nil {
+		return nil, fmt.Errorf("scanning base ref: %w", err)
+	}
+
+	// Checkout and scan head ref
+	headPath, headCleanup, err := drift.CheckoutRef(args.Path, headRef)
+	if err != nil {
+		return nil, fmt.Errorf("checking out head ref %s: %w", headRef, err)
+	}
+	defer headCleanup()
+
+	headGraph, err := h.scanner.Scan(headPath)
+	if err != nil {
+		return nil, fmt.Errorf("scanning head ref: %w", err)
+	}
+
+	report := drift.Compare(baseGraph, headGraph)
+	report.BaseRef = args.BaseRef
+	report.CompareRef = headRef
+	return report, nil
 }
 
 type ArchValidateArgs struct {
@@ -427,9 +469,10 @@ func (h *HandlerRegistry) archValidate(ctx context.Context, args ArchValidateArg
 		return nil, fmt.Errorf("scanning codebase: %w", err)
 	}
 
+	detectedViolations := detector.ValidateGraph(graph)
 	var violations []string
-	if graph.HasCycle() {
-		violations = append(violations, "circular dependency detected")
+	for _, v := range detectedViolations {
+		violations = append(violations, fmt.Sprintf("[%s] %s: %s", v.Severity, v.Rule, v.Detail))
 	}
 
 	return &ArchValidateResult{
@@ -440,16 +483,83 @@ func (h *HandlerRegistry) archValidate(ctx context.Context, args ArchValidateArg
 }
 
 type ArchHistoryArgs struct {
-	Path string `json:"path"`
+	Path  string `json:"path"`
+	Limit int    `json:"limit,omitempty"`
 }
 
 type ArchHistoryResult struct {
-	Summary string `json:"summary"`
+	Entries []drift.HistoryEntry `json:"entries"`
+	Summary string               `json:"summary"`
 }
 
 func (h *HandlerRegistry) archHistory(_ context.Context, args ArchHistoryArgs) (*ArchHistoryResult, error) {
+	if args.Path == "" {
+		return nil, fmt.Errorf("path is required")
+	}
+	limit := args.Limit
+	if limit <= 0 {
+		limit = 10
+	}
+
+	commits, err := drift.GetSignificantCommits(args.Path, limit)
+	if err != nil {
+		return nil, fmt.Errorf("getting git history: %w", err)
+	}
+
+	var entries []drift.HistoryEntry
+	var prevGraph *model.ArchGraph
+
+	// Walk commits in reverse (oldest first) to compare sequentially
+	for i := len(commits) - 1; i >= 0; i-- {
+		c := commits[i]
+		worktree, cleanup, err := drift.CheckoutRef(args.Path, c.Hash)
+		if err != nil {
+			entries = append(entries, drift.HistoryEntry{
+				Ref:     c.Hash[:8],
+				Date:    c.Date,
+				Message: c.Message,
+			})
+			continue
+		}
+
+		graph, scanErr := h.scanner.Scan(worktree)
+		cleanup()
+
+		if scanErr != nil {
+			entries = append(entries, drift.HistoryEntry{
+				Ref:     c.Hash[:8],
+				Date:    c.Date,
+				Message: c.Message,
+			})
+			continue
+		}
+
+		entry := drift.HistoryEntry{
+			Ref:       c.Hash[:8],
+			Date:      c.Date,
+			Message:   c.Message,
+			NodeCount: graph.NodeCount(),
+			EdgeCount: graph.EdgeCount(),
+			Topology:  string(graph.Topology),
+		}
+
+		if prevGraph != nil {
+			report := drift.Compare(prevGraph, graph)
+			entry.ChangesFromPrevious = len(report.Changes)
+		}
+
+		entries = append(entries, entry)
+		prevGraph = graph
+	}
+
+	// Reverse back to most-recent-first order
+	for i, j := 0, len(entries)-1; i < j; i, j = i+1, j-1 {
+		entries[i], entries[j] = entries[j], entries[i]
+	}
+
 	return &ArchHistoryResult{
-		Summary: "Architecture history tracking not yet implemented.",
+		Entries: entries,
+		Summary: fmt.Sprintf("Analyzed %d commits", len(entries)),
 	}, nil
 }
 
@@ -514,9 +624,25 @@ func (h *HandlerRegistry) archExplain(ctx context.Context, args ArchExplainArgs)
 		return nil, fmt.Errorf("scanning codebase: %w", err)
 	}
 
+	boundaries, _ := detector.DetectBoundaries(args.Path)
+	explanation := detector.ExplainArchitecture(graph, boundaries)
+
+	// Build evidence from patterns, decisions, and risks
+	var evidence []string
+	evidence = append(evidence, "Topology: "+explanation.TopologyReason)
+	for _, p := range explanation.Patterns {
+		evidence = append(evidence, "Pattern: "+p)
+	}
+	for _, d := range explanation.KeyDecisions {
+		evidence = append(evidence, "Decision: "+d)
+	}
+	for _, r := range explanation.Risks {
+		evidence = append(evidence, "Risk: "+r)
+	}
+
 	return &ArchExplainResult{
-		Explanation: graph.Summary(),
-		Evidence:    []string{"Based on static analysis of source files"},
+		Explanation: explanation.Summary,
+		Evidence:    evidence,
 	}, nil
 }
 
