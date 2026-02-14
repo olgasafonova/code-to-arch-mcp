@@ -565,7 +565,7 @@ func (h *HandlerRegistry) archValidate(ctx context.Context, args ArchValidateArg
 	}
 
 	detectedViolations := detector.ValidateGraph(graph, customRules)
-	var violations []string
+	violations := make([]string, 0, len(detectedViolations))
 	for _, v := range detectedViolations {
 		violations = append(violations, fmt.Sprintf("[%s] %s: %s", v.Severity, v.Rule, v.Detail))
 	}

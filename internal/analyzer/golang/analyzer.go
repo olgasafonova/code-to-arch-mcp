@@ -227,16 +227,24 @@ func (a *Analyzer) analyzeCall(call *ast.CallExpr, pkgID, filePath string, fset 
 	}
 
 	// Detect HTTP handler registrations
-	httpPatterns := map[string]bool{
+	// "Always HTTP" methods don't need route validation; ambiguous names (Get, Put, etc.)
+	// require the first argument to look like a route path (starts with "/").
+	alwaysHTTP := map[string]bool{
 		"HandleFunc": true, "Handle": true,
-		"Get": true, "Post": true, "Put": true, "Delete": true, "Patch": true,
-		"GET": true, "POST": true, "PUT": true, "DELETE": true, "PATCH": true,
 		"Group": true, "Route": true,
 	}
+	ambiguousHTTP := map[string]bool{
+		"Get": true, "Post": true, "Put": true, "Delete": true, "Patch": true,
+		"GET": true, "POST": true, "PUT": true, "DELETE": true, "PATCH": true,
+	}
 
-	if httpPatterns[funcName] && len(call.Args) >= 1 {
+	if (alwaysHTTP[funcName] || ambiguousHTTP[funcName]) && len(call.Args) >= 1 {
 		if lit, ok := call.Args[0].(*ast.BasicLit); ok && lit.Kind == token.STRING {
 			route := strings.Trim(lit.Value, `"`)
+			// For ambiguous methods, only match if the argument looks like a route path
+			if ambiguousHTTP[funcName] && !strings.HasPrefix(route, "/") {
+				return nodes, edges
+			}
 			pos := fset.Position(call.Pos())
 			endpointID := fmt.Sprintf("endpoint:%s:%d", filepath.Base(filePath), pos.Line)
 
