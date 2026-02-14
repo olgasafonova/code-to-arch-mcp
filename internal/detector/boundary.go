@@ -35,6 +35,7 @@ func DetectBoundaries(rootPath string) (*BoundaryResult, error) {
 	}
 
 	var goMods, packageJSONs, dockerfiles []string
+	var pyProjects, cargoTomls, pomXMLs, gradleBuilds []string
 	var cmdDirs []string
 	hasGoWork := false
 	hasNxJSON := false
@@ -81,6 +82,14 @@ func DetectBoundaries(rootPath string) (*BoundaryResult, error) {
 			dockerfiles = append(dockerfiles, rel)
 		case "docker-compose.yml", "docker-compose.yaml", "compose.yml", "compose.yaml":
 			hasDockerCompose = true
+		case "pyproject.toml", "setup.py", "setup.cfg":
+			pyProjects = append(pyProjects, rel)
+		case "Cargo.toml":
+			cargoTomls = append(cargoTomls, rel)
+		case "pom.xml":
+			pomXMLs = append(pomXMLs, rel)
+		case "build.gradle", "build.gradle.kts":
+			gradleBuilds = append(gradleBuilds, rel)
 		}
 
 		// Check for Kubernetes manifests
@@ -98,8 +107,11 @@ func DetectBoundaries(rootPath string) (*BoundaryResult, error) {
 	}
 
 	// Detect topology
+	// Count all project markers for topology inference
+	totalProjectMarkers := len(goMods) + len(packageJSONs) + len(pyProjects) + len(cargoTomls) + len(pomXMLs) + len(gradleBuilds)
+
 	result.Topology = inferTopology(
-		len(goMods), len(packageJSONs), len(dockerfiles), len(cmdDirs),
+		len(goMods), len(packageJSONs), len(dockerfiles), len(cmdDirs), totalProjectMarkers,
 		hasGoWork, hasNxJSON, hasPnpmWorkspace, hasDockerCompose, hasK8sManifests,
 	)
 
@@ -153,11 +165,81 @@ func DetectBoundaries(rootPath string) (*BoundaryResult, error) {
 		}
 	}
 
+	// Python projects
+	for _, py := range pyProjects {
+		dir := filepath.Dir(py)
+		name := filepath.Base(dir)
+		if dir == "." {
+			name = filepath.Base(absRoot)
+		}
+		marker := filepath.Base(py)
+		if !boundaryExistsAtPath(result.Boundaries, dir) {
+			result.Boundaries = append(result.Boundaries, Boundary{
+				Name:    name,
+				Path:    dir,
+				Type:    "module",
+				Markers: []string{marker},
+			})
+		}
+	}
+
+	// Rust crates
+	for _, cargo := range cargoTomls {
+		dir := filepath.Dir(cargo)
+		name := filepath.Base(dir)
+		if dir == "." {
+			name = filepath.Base(absRoot)
+		}
+		if !boundaryExistsAtPath(result.Boundaries, dir) {
+			result.Boundaries = append(result.Boundaries, Boundary{
+				Name:    name,
+				Path:    dir,
+				Type:    "module",
+				Markers: []string{"Cargo.toml"},
+			})
+		}
+	}
+
+	// Java/Kotlin projects (Maven)
+	for _, pom := range pomXMLs {
+		dir := filepath.Dir(pom)
+		name := filepath.Base(dir)
+		if dir == "." {
+			name = filepath.Base(absRoot)
+		}
+		if !boundaryExistsAtPath(result.Boundaries, dir) {
+			result.Boundaries = append(result.Boundaries, Boundary{
+				Name:    name,
+				Path:    dir,
+				Type:    "module",
+				Markers: []string{"pom.xml"},
+			})
+		}
+	}
+
+	// Java/Kotlin projects (Gradle)
+	for _, gradle := range gradleBuilds {
+		dir := filepath.Dir(gradle)
+		name := filepath.Base(dir)
+		if dir == "." {
+			name = filepath.Base(absRoot)
+		}
+		marker := filepath.Base(gradle)
+		if !boundaryExistsAtPath(result.Boundaries, dir) {
+			result.Boundaries = append(result.Boundaries, Boundary{
+				Name:    name,
+				Path:    dir,
+				Type:    "module",
+				Markers: []string{marker},
+			})
+		}
+	}
+
 	return result, nil
 }
 
 func inferTopology(
-	goModCount, pkgJSONCount, dockerfileCount, cmdCount int,
+	goModCount, pkgJSONCount, dockerfileCount, cmdCount, totalProjectMarkers int,
 	hasGoWork, hasNx, hasPnpmWorkspace, hasDockerCompose, hasK8s bool,
 ) model.TopologyType {
 	// Monorepo signals
@@ -180,7 +262,12 @@ func inferTopology(
 		return model.TopologyMonorepo
 	}
 
-	// Single entry point, single go.mod/package.json = monolith
+	// Multiple project markers across different languages = monorepo
+	if totalProjectMarkers > 2 {
+		return model.TopologyMonorepo
+	}
+
+	// Single entry point, single project marker = monolith
 	if (goModCount == 1 || pkgJSONCount == 1) && dockerfileCount <= 1 {
 		return model.TopologyMonolith
 	}

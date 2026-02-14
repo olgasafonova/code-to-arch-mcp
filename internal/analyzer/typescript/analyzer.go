@@ -111,8 +111,11 @@ func (a *Analyzer) Analyze(path string) ([]*model.Node, []*model.Edge, error) {
 		edges = append(edges, infraEdges...)
 	}
 
+	// Detect framework from imports before extracting routes
+	framework := detectFramework(root, src)
+
 	// Extract route handlers
-	routeNodes, routeEdges := extractRoutes(root, src, modID, path)
+	routeNodes, routeEdges := extractRoutes(root, src, modID, path, framework)
 	nodes = append(nodes, routeNodes...)
 	edges = append(edges, routeEdges...)
 
@@ -181,7 +184,32 @@ var httpMethods = map[string]bool{
 	"options": true, "head": true, "all": true, "use": true, "route": true,
 }
 
-func extractRoutes(root *sitter.Node, src []byte, modID, filePath string) ([]*model.Node, []*model.Edge) {
+// frameworkPackages maps npm package names to framework labels.
+var frameworkPackages = map[string]string{
+	"express":    "express",
+	"fastify":    "fastify",
+	"koa":        "koa",
+	"hapi":       "hapi",
+	"@hapi/hapi": "hapi",
+	"restify":    "restify",
+}
+
+// detectFramework checks imports to determine the web framework in use.
+func detectFramework(root *sitter.Node, src []byte) string {
+	for i := 0; i < int(root.ChildCount()); i++ {
+		child := root.Child(i)
+		if child.Type() != "import_statement" {
+			continue
+		}
+		importPath := extractImportSource(child, src)
+		if fw, ok := frameworkPackages[importPath]; ok {
+			return fw
+		}
+	}
+	return "unknown"
+}
+
+func extractRoutes(root *sitter.Node, src []byte, modID, filePath, framework string) ([]*model.Node, []*model.Edge) {
 	var nodes []*model.Node
 	var edges []*model.Edge
 
@@ -233,7 +261,7 @@ func extractRoutes(root *sitter.Node, src []byte, modID, filePath string) ([]*mo
 				"method":    methodName,
 				"route":     routePath,
 				"line":      fmt.Sprintf("%d", line),
-				"framework": "express",
+				"framework": framework,
 			},
 		})
 		edges = append(edges, &model.Edge{

@@ -20,13 +20,29 @@ var ErrLimitReached = errors.New("scan limit reached")
 
 // ScanOptions controls scan behavior.
 type ScanOptions struct {
-	MaxFiles  int           // 0 = unlimited
-	MaxNodes  int           // 0 = unlimited
-	Timeout   time.Duration // 0 = no timeout
-	SkipDirs  []string      // additional dirs to skip (merged with defaults)
-	SkipGlobs []string      // filepath.Match patterns to skip (e.g. "*_test.go")
-	Workers   int           // 0 = runtime.NumCPU(), capped at 8
-	State     *ScanState    // non-nil enables incremental scanning (reuse cached results for unchanged files)
+	MaxFiles     int           // 0 = unlimited
+	MaxNodes     int           // 0 = unlimited
+	Timeout      time.Duration // 0 = no timeout
+	SkipDirs     []string      // additional dirs to skip (merged with defaults)
+	SkipGlobs    []string      // filepath.Match patterns to skip (e.g. "*_test.go")
+	IncludeTests bool          // if true, don't skip test files (default: skip them)
+	Workers      int           // 0 = runtime.NumCPU(), capped at 8
+	State        *ScanState    // non-nil enables incremental scanning (reuse cached results for unchanged files)
+}
+
+// defaultTestGlobs are file patterns excluded by default to avoid test fixtures
+// polluting the architecture graph. Set IncludeTests=true to override.
+var defaultTestGlobs = []string{
+	"*_test.go",
+	"*.test.ts",
+	"*.test.tsx",
+	"*.spec.ts",
+	"*.spec.tsx",
+	"*.test.js",
+	"*.spec.js",
+	"test_*.py",
+	"*_test.py",
+	"conftest.py",
 }
 
 // DefaultScanOptions returns permissive defaults with no limits.
@@ -145,6 +161,12 @@ func (s *Scanner) ScanWithOptions(ctx context.Context, rootPath string, opts Sca
 		mergedSkipDirs[d] = true
 	}
 
+	// Merge default test globs unless IncludeTests is set
+	skipGlobs := opts.SkipGlobs
+	if !opts.IncludeTests {
+		skipGlobs = append(skipGlobs, defaultTestGlobs...)
+	}
+
 	// Phase 1: Collect files (single-threaded walk)
 	var files []fileWork
 	var stats ScanStats
@@ -175,10 +197,10 @@ func (s *Scanner) ScanWithOptions(ctx context.Context, rootPath string, opts Sca
 		}
 
 		// Check skip globs against base name and relative path
-		if len(opts.SkipGlobs) > 0 {
+		if len(skipGlobs) > 0 {
 			baseName := d.Name()
 			relPath, _ := filepath.Rel(absRoot, path)
-			for _, pattern := range opts.SkipGlobs {
+			for _, pattern := range skipGlobs {
 				if matched, _ := filepath.Match(pattern, baseName); matched {
 					stats.FilesSkipped++
 					return nil

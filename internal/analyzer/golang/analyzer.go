@@ -76,6 +76,9 @@ func (a *Analyzer) Analyze(path string) ([]*model.Node, []*model.Edge, error) {
 		nodes, edges = a.classifyImport(importPath, pkgID, nodes, edges)
 	}
 
+	// Detect web framework from imports
+	framework := detectFramework(file)
+
 	// Walk AST for endpoint and infrastructure patterns
 	ast.Inspect(file, func(n ast.Node) bool {
 		call, ok := n.(*ast.CallExpr)
@@ -83,7 +86,7 @@ func (a *Analyzer) Analyze(path string) ([]*model.Node, []*model.Edge, error) {
 			return true
 		}
 
-		newNodes, newEdges := a.analyzeCall(call, pkgID, path, fset)
+		newNodes, newEdges := a.analyzeCall(call, pkgID, path, fset, framework)
 		nodes = append(nodes, newNodes...)
 		edges = append(edges, newEdges...)
 
@@ -177,8 +180,39 @@ func (a *Analyzer) classifyImport(importPath, pkgID string, nodes []*model.Node,
 	return nodes, edges
 }
 
+// frameworkImports maps Go import paths to framework labels.
+var frameworkImports = map[string]string{
+	"github.com/gin-gonic/gin":    "gin",
+	"github.com/go-chi/chi":       "chi",
+	"github.com/go-chi/chi/v5":    "chi",
+	"github.com/labstack/echo":    "echo",
+	"github.com/labstack/echo/v4": "echo",
+	"github.com/gofiber/fiber":    "fiber",
+	"github.com/gofiber/fiber/v2": "fiber",
+	"github.com/gorilla/mux":      "gorilla",
+	"net/http":                    "stdlib",
+}
+
+// detectFramework checks imports to determine the web framework in use.
+func detectFramework(file *ast.File) string {
+	for _, imp := range file.Imports {
+		importPath := strings.Trim(imp.Path.Value, `"`)
+		if fw, ok := frameworkImports[importPath]; ok && fw != "stdlib" {
+			return fw
+		}
+	}
+	// Check if net/http is imported (stdlib fallback)
+	for _, imp := range file.Imports {
+		importPath := strings.Trim(imp.Path.Value, `"`)
+		if importPath == "net/http" {
+			return "stdlib"
+		}
+	}
+	return "unknown"
+}
+
 // analyzeCall inspects function call expressions for endpoint patterns.
-func (a *Analyzer) analyzeCall(call *ast.CallExpr, pkgID, filePath string, fset *token.FileSet) ([]*model.Node, []*model.Edge) {
+func (a *Analyzer) analyzeCall(call *ast.CallExpr, pkgID, filePath string, fset *token.FileSet, framework string) ([]*model.Node, []*model.Edge) {
 	var nodes []*model.Node
 	var edges []*model.Edge
 
@@ -208,9 +242,10 @@ func (a *Analyzer) analyzeCall(call *ast.CallExpr, pkgID, filePath string, fset 
 				Language: "go",
 				Path:     filePath,
 				Properties: map[string]string{
-					"method": funcName,
-					"route":  route,
-					"line":   fmt.Sprintf("%d", pos.Line),
+					"method":    funcName,
+					"route":     route,
+					"line":      fmt.Sprintf("%d", pos.Line),
+					"framework": framework,
 				},
 			})
 			edges = append(edges, &model.Edge{
