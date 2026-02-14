@@ -1,9 +1,8 @@
 package render
 
 import (
-	"strings"
-
 	"github.com/olgasafonova/code-to-arch-mcp/internal/model"
+	"strings"
 )
 
 // FilterNodesByViewLevel filters nodes based on the requested view level.
@@ -39,8 +38,7 @@ type VisibleGraph struct {
 // FilterGraph returns nodes and edges visible at the given view level.
 // Edges are included only if both source and target are visible.
 // Import edges (target "import:X") are resolved to internal package nodes
-// via path suffix matching, so "import:github.com/o/r/internal/model"
-// maps to a node whose relative path is "internal/model".
+// via ArchGraph.ResolvedEdges().
 func FilterGraph(graph *model.ArchGraph, level ViewLevel) *VisibleGraph {
 	nodes := FilterNodesByViewLevel(graph.Nodes(), level)
 	ids := make(map[string]bool, len(nodes))
@@ -48,78 +46,12 @@ func FilterGraph(graph *model.ArchGraph, level ViewLevel) *VisibleGraph {
 		ids[n.ID] = true
 	}
 
-	// Build path refs for suffix-matching import targets to node IDs.
-	type pathRef struct {
-		relPath string
-		id      string
-	}
-	var pathRefs []pathRef
-	rootPath := graph.RootPath
-	for _, n := range nodes {
-		if n.Path == "" {
-			continue
-		}
-		relPath := n.Path
-		if rootPath != "" {
-			if rel, ok := strings.CutPrefix(n.Path, rootPath+"/"); ok {
-				relPath = rel
-			}
-		}
-		pathRefs = append(pathRefs, pathRef{relPath: relPath, id: n.ID})
-	}
-
-	// Cache resolved import paths to avoid repeated suffix matching.
-	importCache := make(map[string]string) // import path → node ID ("" = unresolvable)
-
 	var edges []*model.Edge
-	seen := make(map[string]bool)
-
-	for _, e := range graph.Edges() {
-		source := e.Source
-		target := e.Target
-
-		// Resolve "import:" targets to internal node IDs.
-		if importPath, ok := strings.CutPrefix(target, "import:"); ok {
-			if nodeID, cached := importCache[importPath]; cached {
-				if nodeID != "" {
-					target = nodeID
-				}
-			} else {
-				found := false
-				for _, ref := range pathRefs {
-					if strings.HasSuffix(importPath, "/"+ref.relPath) || importPath == ref.relPath {
-						importCache[importPath] = ref.id
-						target = ref.id
-						found = true
-						break
-					}
-				}
-				if !found {
-					importCache[importPath] = ""
-				}
-			}
-		}
-
-		if !ids[source] || !ids[target] {
+	for _, e := range graph.ResolvedEdges() {
+		if !ids[e.Source] || !ids[e.Target] {
 			continue
 		}
-		if source == target {
-			continue
-		}
-
-		// Deduplicate resolved edges (many files in a package produce identical edges).
-		key := source + "|" + target + "|" + string(e.Type)
-		if seen[key] {
-			continue
-		}
-		seen[key] = true
-
-		edges = append(edges, &model.Edge{
-			Source: source,
-			Target: target,
-			Type:   e.Type,
-			Label:  e.Label,
-		})
+		edges = append(edges, e)
 	}
 
 	return &VisibleGraph{Nodes: nodes, Edges: edges, IDs: ids}

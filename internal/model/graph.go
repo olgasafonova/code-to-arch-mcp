@@ -278,6 +278,87 @@ func (g *ArchGraph) RelativePaths() {
 	}
 }
 
+// ResolvedEdges returns edges with "import:" targets resolved to real node IDs.
+// Import paths are matched to nodes via path suffix (e.g.
+// "import:github.com/user/repo/internal/model" → node with path "internal/model").
+// Edges whose target cannot be resolved are dropped. Duplicates are removed.
+func (g *ArchGraph) ResolvedEdges() []*Edge {
+	g.mu.RLock()
+	defer g.mu.RUnlock()
+
+	// Build suffix lookup: relPath → nodeID.
+	type pathRef struct {
+		relPath string
+		id      string
+	}
+	var refs []pathRef
+	for _, n := range g.nodes {
+		if n.Path == "" {
+			continue
+		}
+		relPath := n.Path
+		if g.RootPath != "" {
+			if rel, ok := strings.CutPrefix(n.Path, g.RootPath+"/"); ok {
+				relPath = rel
+			}
+		}
+		refs = append(refs, pathRef{relPath: relPath, id: n.ID})
+	}
+
+	importCache := make(map[string]string) // import path → node ID ("" = unresolvable)
+
+	var result []*Edge
+	seen := make(map[string]bool)
+
+	for _, e := range g.edges {
+		target := e.Target
+
+		if importPath, ok := strings.CutPrefix(target, "import:"); ok {
+			if nodeID, cached := importCache[importPath]; cached {
+				if nodeID == "" {
+					continue
+				}
+				target = nodeID
+			} else {
+				found := false
+				for _, ref := range refs {
+					if strings.HasSuffix(importPath, "/"+ref.relPath) || importPath == ref.relPath {
+						importCache[importPath] = ref.id
+						target = ref.id
+						found = true
+						break
+					}
+				}
+				if !found {
+					importCache[importPath] = ""
+					continue
+				}
+			}
+		}
+
+		if _, exists := g.nodes[target]; !exists {
+			continue
+		}
+		if e.Source == target {
+			continue
+		}
+
+		key := e.Source + "|" + target + "|" + string(e.Type)
+		if seen[key] {
+			continue
+		}
+		seen[key] = true
+
+		result = append(result, &Edge{
+			Source: e.Source,
+			Target: target,
+			Type:   e.Type,
+			Label:  e.Label,
+		})
+	}
+	return result
+}
+
 // Summary returns a human-readable summary of the graph.
 func (g *ArchGraph) Summary() string {
 	g.mu.RLock()
