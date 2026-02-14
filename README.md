@@ -4,6 +4,16 @@ An MCP server that reverse-engineers architecture from source code. Point it at 
 
 No configuration files, no manual diagramming. Static analysis builds the architecture model directly from your code.
 
+## Why
+
+Architecture diagrams go stale the day you commit them. Most teams know they should review architecture regularly, check for circular dependencies, and catch structural drift between branches. In practice, these tasks are manual enough that they don't happen.
+
+- This tool generates architecture from code, so diagrams are always current. No one has to maintain them.
+- `arch_validate` turns "check for circular dependencies" from a retro action item into a one-prompt task.
+- `arch_drift` compares architecture between any two git refs. It catches structural changes that code review misses: a new database dependency, a service that quietly became a monolith, an endpoint that bypasses the API gateway.
+
+<!-- TODO: Add demo GIF showing arch_scan + arch_generate on a real project -->
+
 ## What it does
 
 **Parses source files with language-specific analyzers** (Go via `go/ast`, TypeScript and Python via tree-sitter) and builds an architecture graph of nodes and edges.
@@ -12,9 +22,60 @@ No configuration files, no manual diagramming. Static analysis builds the archit
 
 **Edges** represent relationships: dependencies, API calls, data flows, publish/subscribe, read/write.
 
-**12 MCP tools** let an LLM analyze, visualize, compare, and validate architecture on demand.
+[MCP](https://modelcontextprotocol.io/) (Model Context Protocol) lets AI assistants call external tools. This server gives your AI assistant 12 architecture analysis tools.
+
+## What you get
+
+Run `arch_scan` on a Go project and get back a structured architecture graph:
+
+```json
+{
+  "topology": "monorepo",
+  "nodes": [
+    {"id": "pkg:api/server", "name": "server", "type": "package", "language": "go"},
+    {"id": "pkg:worker/processor", "name": "processor", "type": "package", "language": "go"},
+    {"id": "infra:postgresql", "name": "PostgreSQL", "type": "database"},
+    {"id": "infra:redis", "name": "Redis", "type": "cache"},
+    {"id": "infra:nats", "name": "NATS", "type": "queue"}
+  ],
+  "edges": [
+    {"source": "pkg:api/server", "target": "infra:postgresql", "type": "read_write"},
+    {"source": "pkg:api/server", "target": "infra:redis", "type": "read_write"},
+    {"source": "pkg:worker/processor", "target": "infra:nats", "type": "subscribe"}
+  ],
+  "stats": {"files_analyzed": 47, "files_cached": 38, "files_changed": 9, "nodes_found": 12, "edges_found": 23, "duration_ms": 340}
+}
+```
+
+Then ask `arch_generate` for a Mermaid diagram, or `arch_validate` to check for circular dependencies. Infrastructure (databases, queues, caches) is detected automatically from import paths.
+
+## Usage examples
+
+Once configured, ask your LLM:
+
+- "Scan the architecture of ~/Projects/my-app"
+- "Generate a C4 diagram of this project"
+- "Are there any circular dependencies or layering violations?"
+- "Compare architecture between the v1.0 tag and main branch"
+- "How has the architecture changed since last month?"
+- "What databases does this service connect to?"
+- "Export the architecture as Excalidraw"
+- "Explain the architecture decisions in this codebase"
+- "Save this architecture as our v2.0 baseline"
+- "Scan this monorepo but limit to 500 files and skip test files"
 
 ## Tools
+
+### Key tools
+
+| Tool | What it does |
+|------|-------------|
+| `arch_drift` | Compare architecture between two branches, tags, or commits |
+| `arch_validate` | Check for circular dependencies, orphan nodes, and layering violations |
+| `arch_scan` | Scan a codebase and return the full architecture graph |
+| `arch_generate` | Generate a diagram (Mermaid, PlantUML, C4, Structurizr, JSON, draw.io, Excalidraw) |
+
+### All tools
 
 | Tool | What it does |
 |------|-------------|
@@ -121,20 +182,16 @@ All scan tools accept optional parameters for handling large codebases:
 
 Partial results include a `truncated: true` flag so you know the graph is incomplete. Sequential tool calls on the same path are cached for 30 seconds.
 
-## Usage examples
+## Incremental scanning
 
-Once configured, ask your LLM:
+Repeat scans on the same codebase are fast. The server tracks file modification times and content hashes in `~/.mcp-context/code-to-arch/`. On subsequent scans, only files that actually changed get re-analyzed; unchanged files reuse cached analysis results.
 
-- "Scan the architecture of ~/Projects/my-app"
-- "Generate a C4 diagram of this project"
-- "Export the architecture as Excalidraw"
-- "What databases does this service connect to?"
-- "Are there any circular dependencies or layering violations?"
-- "How has the architecture changed since last month?"
-- "Compare architecture between the v1.0 tag and main branch"
-- "Save this architecture as our v2.0 baseline"
-- "Explain the architecture decisions in this codebase"
-- "Scan this monorepo but limit to 500 files and skip test files"
+The stats in the response show what happened:
+- `files_analyzed` — total files in the codebase
+- `files_cached` — files skipped (unchanged since last scan)
+- `files_changed` — files re-analyzed (new, modified, or deleted)
+
+First scan of a 500-file project takes a few seconds. Follow-up scans after editing 3 files take milliseconds.
 
 ## Development
 
@@ -164,14 +221,14 @@ bash scripts/smoke-test.sh
 cmd/code-to-arch/          Entry point (stdio + HTTP transport)
 internal/
   model/                   ArchGraph, Node, Edge, Diff types
-  scanner/                 File walker + analyzer orchestration
+  scanner/                 File walker, incremental change detection, analyzer orchestration
   analyzer/golang/         Go static analysis (go/ast)
   analyzer/typescript/     TypeScript analysis (tree-sitter)
   analyzer/python/         Python analysis (tree-sitter)
   detector/                Boundary detection, topology, validation, explanation
   drift/                   Snapshot comparison, git ref diffing, history
   render/                  Mermaid, PlantUML, C4, Structurizr, JSON, draw.io, Excalidraw
-  infra/                   Scan result cache
+  infra/                   Cache, persistent state (~/.mcp-context/)
 tools/                     MCP tool definitions and handlers
 ```
 

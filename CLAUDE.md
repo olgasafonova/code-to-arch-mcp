@@ -14,7 +14,7 @@ Go MCP server that scans codebases, generates architecture diagrams, and detects
 - `internal/render/` - Output renderers: Mermaid, PlantUML, C4, Structurizr, draw.io, Excalidraw
 - `internal/drift/` - Drift detection: graph comparison, severity classification, reports
 - `internal/llm/` - Optional LLM client for service classification and naming
-- `internal/infra/` - Cache, circuit breaker
+- `internal/infra/` - Cache, circuit breaker, persistent state (persist.go for ~/.mcp-context/)
 - `tools/` - MCP tool definitions and handlers
 - `tracing/` - OpenTelemetry setup
 
@@ -29,7 +29,9 @@ Go MCP server that scans codebases, generates architecture diagrams, and detects
 ## Key Patterns
 - ArchGraph is the central model; all analyzers produce Nodes and Edges into the same graph
 - Language analyzers implement the Analyzer interface with `Analyze(path) (*ArchGraph, error)`
-- Scanner orchestrates: walk files -> detect language -> delegate to analyzer -> merge graphs
+- Scanner orchestrates: walk files -> detect changes (incremental) -> delegate to analyzer -> merge graphs
+- Incremental scanning: ScanState tracks per-file mtime + content hash; unchanged files reuse cached analysis results
+- State persists to ~/.mcp-context/code-to-arch/ via infra.StateDir() convention
 - Renderers implement `Render(graph *ArchGraph, opts RenderOptions) (string, error)`
 - Drift detection uses node matching (exact ID -> name similarity -> path overlap) + edge comparison
 - "USE WHEN" description pattern for optimal LLM tool selection

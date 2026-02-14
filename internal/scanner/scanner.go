@@ -26,6 +26,7 @@ type ScanOptions struct {
 	SkipDirs  []string      // additional dirs to skip (merged with defaults)
 	SkipGlobs []string      // filepath.Match patterns to skip (e.g. "*_test.go")
 	Workers   int           // 0 = runtime.NumCPU(), capped at 8
+	State     *ScanState    // non-nil enables incremental scanning (reuse cached results for unchanged files)
 }
 
 // DefaultScanOptions returns permissive defaults with no limits.
@@ -37,13 +38,16 @@ func DefaultScanOptions() ScanOptions {
 type ScanResult struct {
 	Graph     *model.ArchGraph
 	Stats     ScanStats
-	Truncated bool // true if any limit was hit
+	Truncated bool       // true if any limit was hit
+	State     *ScanState // updated state after scan (for persistence)
 }
 
 // ScanStats contains metrics about the scan.
 type ScanStats struct {
 	FilesAnalyzed int   `json:"files_analyzed"`
 	FilesSkipped  int   `json:"files_skipped"`
+	FilesCached   int   `json:"files_cached,omitempty"`  // files reused from cache
+	FilesChanged  int   `json:"files_changed,omitempty"` // files re-analyzed due to changes
 	NodesFound    int   `json:"nodes_found"`
 	EdgesFound    int   `json:"edges_found"`
 	DurationMs    int64 `json:"duration_ms"`
@@ -101,6 +105,7 @@ type fileWork struct {
 
 // analyzeResult holds the output of analyzing a single file.
 type analyzeResult struct {
+	path  string // source file path (for state updates)
 	nodes []*model.Node
 	edges []*model.Edge
 }
@@ -115,7 +120,7 @@ func (s *Scanner) cloneAnalyzers() map[string]Analyzer {
 }
 
 // ScanWithOptions walks the directory tree with configurable limits, timeout, and skip patterns.
-// Uses a two-phase approach: collect files (single-threaded), then analyze (parallel workers).
+// Uses a three-phase approach: collect files, detect changes (if incremental), then analyze.
 func (s *Scanner) ScanWithOptions(ctx context.Context, rootPath string, opts ScanOptions) (*ScanResult, error) {
 	start := time.Now()
 
@@ -202,8 +207,81 @@ func (s *Scanner) ScanWithOptions(ctx context.Context, rootPath string, opts Sca
 		truncated = true
 	}
 
-	// Phase 2: Analyze files
+	// Phase 1.5: Detect changes (incremental mode)
+	// Separate files into "needs analysis" vs "use cached results"
+	var toAnalyze []fileWork
+	var cachedResults []analyzeResult
+	state := opts.State
+
+	if state != nil {
+		walkedPaths := make([]string, len(files))
+		for i, f := range files {
+			walkedPaths[i] = f.path
+		}
+
+		changes, detectErr := state.DetectChanges(walkedPaths)
+		if detectErr != nil {
+			s.logger.Warn("Change detection failed, falling back to full scan", "error", detectErr)
+			toAnalyze = files
+		} else {
+			// Build path->ext lookup for changed files
+			extByPath := make(map[string]string, len(files))
+			for _, f := range files {
+				extByPath[f.path] = f.ext
+			}
+
+			// Queue changed files for analysis
+			for _, path := range changes.Added {
+				toAnalyze = append(toAnalyze, fileWork{path: path, ext: extByPath[path]})
+			}
+			for _, path := range changes.Modified {
+				toAnalyze = append(toAnalyze, fileWork{path: path, ext: extByPath[path]})
+			}
+			stats.FilesChanged = len(toAnalyze)
+
+			// Collect cached results for unchanged files
+			for _, path := range changes.Unchanged {
+				nodes, edges, ok := state.CachedResult(path)
+				if ok {
+					cachedResults = append(cachedResults, analyzeResult{nodes: nodes, edges: edges, path: path})
+					stats.FilesCached++
+				} else {
+					// State inconsistency: re-analyze
+					toAnalyze = append(toAnalyze, fileWork{path: path, ext: extByPath[path]})
+				}
+			}
+
+			// Clean up deleted files from state
+			for _, path := range changes.Deleted {
+				state.RemoveFile(path)
+			}
+
+			s.logger.Info("Incremental change detection",
+				"unchanged", len(changes.Unchanged),
+				"added", len(changes.Added),
+				"modified", len(changes.Modified),
+				"deleted", len(changes.Deleted),
+			)
+		}
+	} else {
+		toAnalyze = files
+	}
+
+	// Phase 2: Analyze files (only changed ones in incremental mode)
 	graph := model.NewGraph(absRoot)
+
+	// First, merge cached results into the graph
+	for _, r := range cachedResults {
+		for _, n := range r.nodes {
+			if graph.AddNode(n) {
+				stats.NodesFound++
+			}
+		}
+		for _, e := range r.edges {
+			graph.AddEdge(e)
+			stats.EdgesFound++
+		}
+	}
 
 	workers := opts.Workers
 	if workers <= 0 {
@@ -212,15 +290,15 @@ func (s *Scanner) ScanWithOptions(ctx context.Context, rootPath string, opts Sca
 	if workers > 8 {
 		workers = 8
 	}
-	if workers > len(files) {
-		workers = len(files)
+	if workers > len(toAnalyze) {
+		workers = len(toAnalyze)
 	}
 
-	if len(files) == 0 {
-		// Nothing to analyze
+	if len(toAnalyze) == 0 {
+		// Nothing to analyze (all cached or empty)
 	} else if workers <= 1 {
 		// Single-threaded path: simpler, avoids clone overhead
-		for _, f := range files {
+		for _, f := range toAnalyze {
 			if ctx.Err() != nil {
 				truncated = true
 				break
@@ -231,6 +309,14 @@ func (s *Scanner) ScanWithOptions(ctx context.Context, rootPath string, opts Sca
 				continue
 			}
 			stats.FilesAnalyzed++
+
+			// Update state with fresh results
+			if state != nil {
+				if updateErr := state.UpdateFile(f.path, nodes, edges); updateErr != nil {
+					s.logger.Warn("State update error", "path", f.path, "error", updateErr)
+				}
+			}
+
 			for _, n := range nodes {
 				if opts.MaxNodes > 0 && stats.NodesFound >= opts.MaxNodes {
 					truncated = true
@@ -250,8 +336,8 @@ func (s *Scanner) ScanWithOptions(ctx context.Context, rootPath string, opts Sca
 		}
 	} else {
 		// Multi-worker path: fan out analysis to goroutines
-		workCh := make(chan fileWork, len(files))
-		resultCh := make(chan analyzeResult, len(files))
+		workCh := make(chan fileWork, len(toAnalyze))
+		resultCh := make(chan analyzeResult, len(toAnalyze))
 
 		var wg sync.WaitGroup
 		for w := 0; w < workers; w++ {
@@ -268,13 +354,13 @@ func (s *Scanner) ScanWithOptions(ctx context.Context, rootPath string, opts Sca
 						s.logger.Warn("Analyzer error", "path", f.path, "error", err)
 						continue
 					}
-					resultCh <- analyzeResult{nodes: nodes, edges: edges}
+					resultCh <- analyzeResult{nodes: nodes, edges: edges, path: f.path}
 				}
 			}()
 		}
 
 		// Send all work
-		for _, f := range files {
+		for _, f := range toAnalyze {
 			workCh <- f
 		}
 		close(workCh)
@@ -288,6 +374,14 @@ func (s *Scanner) ScanWithOptions(ctx context.Context, rootPath string, opts Sca
 		// Collect results in main goroutine (single-threaded merge)
 		for r := range resultCh {
 			stats.FilesAnalyzed++
+
+			// Update state with fresh results
+			if state != nil {
+				if updateErr := state.UpdateFile(r.path, r.nodes, r.edges); updateErr != nil {
+					s.logger.Warn("State update error", "path", r.path, "error", updateErr)
+				}
+			}
+
 			for _, n := range r.nodes {
 				if opts.MaxNodes > 0 && stats.NodesFound >= opts.MaxNodes {
 					truncated = true
@@ -304,6 +398,11 @@ func (s *Scanner) ScanWithOptions(ctx context.Context, rootPath string, opts Sca
 		}
 	}
 
+	// Update state timestamp
+	if state != nil {
+		state.LastScan = time.Now()
+	}
+
 	stats.DurationMs = time.Since(start).Milliseconds()
 
 	// Context cancellation produces a partial result, not a hard error
@@ -313,7 +412,8 @@ func (s *Scanner) ScanWithOptions(ctx context.Context, rootPath string, opts Sca
 
 	s.logger.Info("Scan complete",
 		"root", absRoot,
-		"files", stats.FilesAnalyzed,
+		"files_analyzed", stats.FilesAnalyzed,
+		"files_cached", stats.FilesCached,
 		"nodes", stats.NodesFound,
 		"edges", stats.EdgesFound,
 		"workers", workers,
@@ -325,6 +425,7 @@ func (s *Scanner) ScanWithOptions(ctx context.Context, rootPath string, opts Sca
 		Graph:     graph,
 		Stats:     stats,
 		Truncated: truncated,
+		State:     state,
 	}
 
 	if truncated {
