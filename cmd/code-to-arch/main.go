@@ -22,7 +22,6 @@ const (
 )
 
 func main() {
-	httpAddr := flag.String("http", "", "HTTP address to listen on (e.g., :8080). If empty, uses stdio transport.")
 	flag.Parse()
 
 	logger := slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{
@@ -118,14 +117,6 @@ mermaid, plantuml, c4, structurizr, json`,
 	registry.RegisterAll(server)
 
 	ctx := context.Background()
-
-	if *httpAddr != "" {
-		logger.Info("Starting Code to Arch MCP (HTTP mode)",
-			"address", *httpAddr,
-		)
-		// HTTP transport will be added in a later phase
-		log.Fatalf("HTTP mode not yet implemented. Use stdio transport.")
-	}
 
 	logger.Info("Starting Code to Arch MCP (stdio mode)",
 		"name", ServerName,

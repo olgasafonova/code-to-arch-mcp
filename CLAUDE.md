@@ -4,17 +4,16 @@
 Go MCP server that scans codebases, generates architecture diagrams, and detects when code drifts from documented architecture. Supports Go (go/ast), TypeScript, and Python (tree-sitter). Outputs Mermaid, PlantUML, C4, Structurizr DSL, draw.io XML, and Excalidraw JSON.
 
 ## Architecture
-- `cmd/code-to-arch/main.go` - entry point with stdio + HTTP dual transport
+- `cmd/code-to-arch/main.go` - entry point with stdio transport
 - `internal/model/` - ArchGraph, Node, Edge, Diff types (core data model)
 - `internal/scanner/` - File walker, orchestrator (discovers files and delegates to analyzers)
-- `internal/analyzer/golang/` - Go AST-based analysis (imports, endpoints, DB, messaging)
-- `internal/analyzer/typescript/` - tree-sitter TypeScript analysis
-- `internal/analyzer/python/` - tree-sitter Python analysis
+- `internal/analyzer/golang/` - Go AST-based analysis (import-based deps, stdlib HTTP endpoints, infra classification)
+- `internal/analyzer/typescript/` - tree-sitter TypeScript analysis (import-based deps, Express endpoints, infra classification)
+- `internal/analyzer/python/` - tree-sitter Python analysis (import-based deps, Flask/FastAPI endpoints, infra classification)
 - `internal/detector/` - Boundary detection, topology inference, dataflow tracing, rule validation
 - `internal/render/` - Output renderers: Mermaid, PlantUML, C4, Structurizr, draw.io, Excalidraw
-- `internal/drift/` - Drift detection: graph comparison, severity classification, reports
-- `internal/llm/` - Optional LLM client for service classification and naming
-- `internal/infra/` - Cache, circuit breaker, persistent state (persist.go for ~/.mcp-context/)
+- `internal/drift/` - Drift detection: graph comparison (exact ID match), severity classification, reports
+- `internal/infra/` - Cache, persistent state (persist.go for ~/.mcp-context/)
 - `tools/` - MCP tool definitions and handlers
 - `tracing/` - OpenTelemetry setup
 
@@ -28,12 +27,12 @@ Go MCP server that scans codebases, generates architecture diagrams, and detects
 
 ## Key Patterns
 - ArchGraph is the central model; all analyzers produce Nodes and Edges into the same graph
-- Language analyzers implement the Analyzer interface with `Analyze(path) (*ArchGraph, error)`
+- Language analyzers implement the Analyzer interface with `Analyze(path) ([]*Node, []*Edge, error)`
 - Scanner orchestrates: walk files -> detect changes (incremental) -> delegate to analyzer -> merge graphs
 - Incremental scanning: ScanState tracks per-file mtime + content hash; unchanged files reuse cached analysis results
 - State persists to ~/.mcp-context/code-to-arch/ via infra.StateDir() convention
 - Renderers implement `Render(graph *ArchGraph, opts RenderOptions) (string, error)`
-- Drift detection uses node matching (exact ID -> name similarity -> path overlap) + edge comparison
+- Drift detection uses exact node ID matching + edge key comparison (no fuzzy matching)
 - "USE WHEN" description pattern for optimal LLM tool selection
 
 ## Build & Test
