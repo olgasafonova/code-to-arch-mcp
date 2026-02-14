@@ -354,6 +354,17 @@ func (h *HandlerRegistry) archDependencies(ctx context.Context, args ArchDepende
 		internal = append(internal, n.Name)
 	}
 
+	// Ensure non-nil slices so JSON serializes as [] not null.
+	if internal == nil {
+		internal = []string{}
+	}
+	if external == nil {
+		external = []string{}
+	}
+	if infra == nil {
+		infra = []string{}
+	}
+
 	return &ArchDependenciesResult{
 		Internal:       internal,
 		External:       external,
@@ -402,6 +413,13 @@ func (h *HandlerRegistry) archDataflow(ctx context.Context, args ArchDataflowArg
 		}
 	}
 
+	if endpoints == nil {
+		endpoints = []string{}
+	}
+	if dataPaths == nil {
+		dataPaths = []string{}
+	}
+
 	return &ArchDataflowResult{
 		Endpoints: endpoints,
 		DataPaths: dataPaths,
@@ -444,6 +462,10 @@ func (h *HandlerRegistry) archBoundaries(_ context.Context, args ArchBoundariesA
 			Type:    b.Type,
 			Markers: b.Markers,
 		})
+	}
+
+	if boundaries == nil {
+		boundaries = []BoundaryInfo{}
 	}
 
 	return &ArchBoundariesResult{
@@ -650,6 +672,10 @@ func (h *HandlerRegistry) archHistory(ctx context.Context, args ArchHistoryArgs)
 	// Reverse back to most-recent-first order
 	for i, j := 0, len(entries)-1; i < j; i, j = i+1, j-1 {
 		entries[i], entries[j] = entries[j], entries[i]
+	}
+
+	if entries == nil {
+		entries = []drift.HistoryEntry{}
 	}
 
 	return &ArchHistoryResult{

@@ -10,6 +10,7 @@ import (
 func Compare(baseline, current *model.ArchGraph) *model.DiffReport {
 	report := &model.DiffReport{
 		MaxSeverity: model.SeverityNone,
+		Changes:     []model.DiffEntry{},
 	}
 
 	baseNodes := nodeMap(baseline.Nodes())
