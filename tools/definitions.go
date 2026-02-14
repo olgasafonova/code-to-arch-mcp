@@ -49,7 +49,7 @@ Pass a subdirectory path; returns the same format as arch_scan scoped to that su
 		Title:  "Generate Architecture Diagram",
 		Description: `Generate a diagram from a scanned architecture in the specified format.
 USE WHEN the user wants a visual representation of the architecture.
-Supports Mermaid, PlantUML, C4, Structurizr DSL, and JSON output.
+Supports Mermaid, PlantUML, C4, Structurizr DSL, draw.io, Excalidraw, and JSON output.
 View levels: system (high-level), container (services + infra), component (all packages).`,
 		Category:   "diagram",
 		ReadOnly:   true,

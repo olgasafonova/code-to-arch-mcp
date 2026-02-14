@@ -753,12 +753,20 @@ func register[Args, Result any](
 		tool.Annotations.OpenWorldHint = ptr(true)
 	}
 
-	mcp.AddTool(server, tool, func(ctx context.Context, req *mcp.CallToolRequest, args Args) (*mcp.CallToolResult, Result, error) {
-		result, err := handler(ctx, args)
+	mcp.AddTool(server, tool, func(ctx context.Context, req *mcp.CallToolRequest, args Args) (callResult *mcp.CallToolResult, result Result, retErr error) {
+		defer func() {
+			if r := recover(); r != nil {
+				var zero Result
+				result = zero
+				retErr = fmt.Errorf("%s panicked: %v", spec.Name, r)
+			}
+		}()
+
+		res, err := handler(ctx, args)
 		if err != nil {
 			var zero Result
 			return nil, zero, fmt.Errorf("%s failed: %w", spec.Name, err)
 		}
-		return nil, result, nil
+		return nil, res, nil
 	})
 }

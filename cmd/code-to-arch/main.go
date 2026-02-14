@@ -65,7 +65,7 @@ Point any tool at a codebase directory path.
 
 ### Generate diagram:
 "Create a Mermaid diagram of this project"
--> USE: arch_generate (outputs Mermaid, PlantUML, C4, Structurizr, JSON)
+-> USE: arch_generate (outputs Mermaid, PlantUML, C4, Structurizr, draw.io, Excalidraw, JSON)
 
 ### Dependencies:
 "What does this service depend on?"
