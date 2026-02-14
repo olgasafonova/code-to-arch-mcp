@@ -121,8 +121,8 @@ func (h *HandlerRegistry) cachedScan(ctx context.Context, path string, opts scan
 		absPath = path
 	}
 
-	optsKey := fmt.Sprintf("%d|%d|%d|%d|%s|%s",
-		opts.MaxFiles, opts.MaxNodes, opts.Timeout, opts.Workers,
+	optsKey := fmt.Sprintf("%d|%d|%d|%s|%s",
+		opts.MaxFiles, opts.MaxNodes, opts.Workers,
 		strings.Join(opts.SkipDirs, ","),
 		strings.Join(opts.SkipGlobs, ","),
 	)
@@ -359,30 +359,13 @@ func (h *HandlerRegistry) archDependencies(ctx context.Context, args ArchDepende
 }
 
 func isStdlib(importPath string) bool {
-	// Go stdlib packages don't contain dots in the first path segment
-	parts := splitFirst(importPath, "/")
-	return len(parts) > 0 && !containsDot(parts[0])
-}
-
-func splitFirst(s, sep string) []string {
-	idx := 0
-	for i := 0; i < len(s); i++ {
-		if string(s[i]) == sep {
-			return []string{s[:i], s[i+1:]}
-		}
-		idx = i
+	// Go stdlib packages don't contain dots in the first path segment.
+	// Extended stdlib (golang.org/x/*) also excluded from external deps.
+	first, _, _ := strings.Cut(importPath, "/")
+	if !strings.Contains(first, ".") {
+		return true
 	}
-	_ = idx
-	return []string{s}
-}
-
-func containsDot(s string) bool {
-	for _, c := range s {
-		if c == '.' {
-			return true
-		}
-	}
-	return false
+	return strings.HasPrefix(importPath, "golang.org/x/")
 }
 
 type ArchDataflowArgs struct {

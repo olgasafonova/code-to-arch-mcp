@@ -49,6 +49,28 @@ func TestToolNamesAreUnique(t *testing.T) {
 	}
 }
 
+func TestIsStdlib(t *testing.T) {
+	tests := []struct {
+		input string
+		want  bool
+	}{
+		{"fmt", true},
+		{"net/http", true},
+		{"encoding/json", true},
+		{"golang.org/x/crypto", true},  // extended stdlib
+		{"golang.org/x/text", true},    // extended stdlib
+		{"github.com/user/pkg", false}, // external
+		{"gorm.io/gorm", false},        // external
+		{"mycompany.com/svc", false},   // external
+	}
+	for _, tt := range tests {
+		got := isStdlib(tt.input)
+		if got != tt.want {
+			t.Errorf("isStdlib(%q) = %v, want %v", tt.input, got, tt.want)
+		}
+	}
+}
+
 func TestToolMethodsAreUnique(t *testing.T) {
 	seen := make(map[string]bool)
 	for _, spec := range AllTools {

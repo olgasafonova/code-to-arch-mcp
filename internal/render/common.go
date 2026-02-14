@@ -54,10 +54,12 @@ func FilterGraph(graph *model.ArchGraph, level ViewLevel) *VisibleGraph {
 }
 
 // SanitizeID replaces characters that are invalid in diagram node IDs.
+// Different separators use distinct replacements to avoid collisions
+// (e.g., "api/v1" and "api.v1" produce different IDs).
 func SanitizeID(id string) string {
 	r := strings.NewReplacer(
-		"/", "_",
-		":", "_",
+		"/", "__",
+		":", "___",
 		".", "_",
 		" ", "_",
 		"-", "_",

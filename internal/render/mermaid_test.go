@@ -90,10 +90,14 @@ func TestSanitizeID(t *testing.T) {
 	tests := []struct {
 		input, expected string
 	}{
-		{"svc:api", "svc_api"},
-		{"pkg/utils", "pkg_utils"},
+		{"svc:api", "svc___api"},
+		{"pkg/utils", "pkg__utils"},
 		{"node.name", "node_name"},
 		{"my-service", "my_service"},
+		// Verify different separators produce distinct IDs
+		{"api/v1", "api__v1"},
+		{"api.v1", "api_v1"},
+		{"api:v1", "api___v1"},
 	}
 	for _, tt := range tests {
 		got := SanitizeID(tt.input)

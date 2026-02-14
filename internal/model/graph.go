@@ -139,11 +139,19 @@ func (g *ArchGraph) NodesByType(t NodeType) []*Node {
 	return result
 }
 
-// AddEdge adds an edge to the graph.
-func (g *ArchGraph) AddEdge(e *Edge) {
+// AddEdge adds an edge to the graph. Returns false if an identical edge
+// (same source, target, and type) already exists.
+func (g *ArchGraph) AddEdge(e *Edge) bool {
 	g.mu.Lock()
 	defer g.mu.Unlock()
+
+	for _, existing := range g.edges {
+		if existing.Source == e.Source && existing.Target == e.Target && existing.Type == e.Type {
+			return false
+		}
+	}
 	g.edges = append(g.edges, e)
+	return true
 }
 
 // Edges returns all edges.

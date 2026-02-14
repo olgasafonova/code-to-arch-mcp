@@ -91,6 +91,28 @@ func TestEdges(t *testing.T) {
 	}
 }
 
+func TestAddEdge_Deduplication(t *testing.T) {
+	g := NewGraph("/tmp")
+	g.AddNode(&Node{ID: "a", Name: "A", Type: NodeService})
+	g.AddNode(&Node{ID: "b", Name: "B", Type: NodeService})
+
+	// First add should succeed
+	if !g.AddEdge(&Edge{Source: "a", Target: "b", Type: EdgeDependency}) {
+		t.Fatal("first AddEdge should return true")
+	}
+	// Duplicate (same source, target, type) should be rejected
+	if g.AddEdge(&Edge{Source: "a", Target: "b", Type: EdgeDependency}) {
+		t.Fatal("duplicate AddEdge should return false")
+	}
+	// Same source/target but different type is not a duplicate
+	if !g.AddEdge(&Edge{Source: "a", Target: "b", Type: EdgeAPICall}) {
+		t.Fatal("different edge type should return true")
+	}
+	if g.EdgeCount() != 2 {
+		t.Fatalf("expected 2 edges, got %d", g.EdgeCount())
+	}
+}
+
 func TestMerge(t *testing.T) {
 	g1 := NewGraph("/tmp")
 	g1.AddNode(&Node{ID: "a", Name: "A", Type: NodeService})

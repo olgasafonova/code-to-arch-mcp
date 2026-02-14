@@ -79,10 +79,20 @@ func (a *Analyzer) Analyze(path string) ([]*model.Node, []*model.Edge, error) {
 	nodes = append(nodes, importNodes...)
 	edges = append(edges, importEdges...)
 
+	// Detect framework from imports before extracting routes
+	framework := detectFramework(root, src)
+
 	// Extract route handlers (Flask/FastAPI decorators)
-	routeNodes, routeEdges := extractRoutes(root, src, modID, path)
+	routeNodes, routeEdges := extractRoutes(root, src, modID, path, framework)
 	nodes = append(nodes, routeNodes...)
 	edges = append(edges, routeEdges...)
+
+	// Extract Django URL patterns (urls.py files with path()/re_path() calls)
+	if strings.HasSuffix(filepath.Base(path), "urls.py") {
+		djangoNodes, djangoEdges := extractDjangoURLPatterns(root, src, modID, path)
+		nodes = append(nodes, djangoNodes...)
+		edges = append(edges, djangoEdges...)
+	}
 
 	return nodes, edges, nil
 }
@@ -191,8 +201,31 @@ var httpMethods = map[string]bool{
 	"options": true, "head": true,
 }
 
+// detectFramework checks imports to determine the web framework in use.
+func detectFramework(root *sitter.Node, src []byte) string {
+	for i := 0; i < int(root.ChildCount()); i++ {
+		child := root.Child(i)
+		var importPath string
+		switch child.Type() {
+		case "import_statement":
+			importPath = extractDottedName(child, src)
+		case "import_from_statement":
+			importPath = extractFromModule(child, src)
+		default:
+			continue
+		}
+		if strings.HasPrefix(importPath, "fastapi") {
+			return "fastapi"
+		}
+		if strings.HasPrefix(importPath, "flask") {
+			return "flask"
+		}
+	}
+	return "unknown"
+}
+
 // extractRoutes finds Flask/FastAPI route decorators.
-func extractRoutes(root *sitter.Node, src []byte, modID, filePath string) ([]*model.Node, []*model.Edge) {
+func extractRoutes(root *sitter.Node, src []byte, modID, filePath, framework string) ([]*model.Node, []*model.Edge) {
 	var nodes []*model.Node
 	var edges []*model.Edge
 
@@ -216,9 +249,14 @@ func extractRoutes(root *sitter.Node, src []byte, modID, filePath string) ([]*mo
 			line := int(node.StartPoint().Row) + 1
 			endpointID := fmt.Sprintf("endpoint:%s:%d", filepath.Base(filePath), line)
 
-			framework := "flask"
-			if method != "route" {
-				framework = "fastapi"
+			fw := framework
+			if fw == "unknown" {
+				// Fallback heuristic: "route" is more common in Flask
+				if method == "route" {
+					fw = "flask"
+				} else {
+					fw = "fastapi"
+				}
 			}
 
 			nodes = append(nodes, &model.Node{
@@ -231,7 +269,7 @@ func extractRoutes(root *sitter.Node, src []byte, modID, filePath string) ([]*mo
 					"method":    method,
 					"route":     routePath,
 					"line":      fmt.Sprintf("%d", line),
-					"framework": framework,
+					"framework": fw,
 				},
 			})
 			edges = append(edges, &model.Edge{
@@ -299,6 +337,79 @@ func extractFirstStringArg(args *sitter.Node, src []byte) string {
 		}
 	}
 	return ""
+}
+
+// djangoURLFuncs are Django URL routing functions.
+var djangoURLFuncs = map[string]bool{
+	"path":    true,
+	"re_path": true,
+}
+
+// extractDjangoURLPatterns finds Django path()/re_path() calls in urls.py files.
+func extractDjangoURLPatterns(root *sitter.Node, src []byte, modID, filePath string) ([]*model.Node, []*model.Edge) {
+	var nodes []*model.Node
+	var edges []*model.Edge
+
+	common.WalkTree(root, func(node *sitter.Node) {
+		if node.Type() != "call" {
+			return
+		}
+
+		fn := node.ChildByFieldName("function")
+		if fn == nil {
+			return
+		}
+
+		// Match path() or re_path() calls
+		var funcName string
+		switch fn.Type() {
+		case "identifier":
+			funcName = fn.Content(src)
+		case "attribute":
+			attr := fn.ChildByFieldName("attribute")
+			if attr != nil {
+				funcName = attr.Content(src)
+			}
+		}
+		if !djangoURLFuncs[funcName] {
+			return
+		}
+
+		args := node.ChildByFieldName("arguments")
+		if args == nil {
+			return
+		}
+
+		routePath := extractFirstStringArg(args, src)
+		if routePath == "" {
+			return
+		}
+
+		line := int(node.StartPoint().Row) + 1
+		endpointID := fmt.Sprintf("endpoint:%s:%d", filepath.Base(filePath), line)
+
+		nodes = append(nodes, &model.Node{
+			ID:       endpointID,
+			Name:     fmt.Sprintf("URL %s", routePath),
+			Type:     model.NodeEndpoint,
+			Language: "python",
+			Path:     filePath,
+			Properties: map[string]string{
+				"method":    funcName,
+				"route":     routePath,
+				"line":      fmt.Sprintf("%d", line),
+				"framework": "django",
+			},
+		})
+		edges = append(edges, &model.Edge{
+			Source: modID,
+			Target: endpointID,
+			Type:   model.EdgeAPICall,
+			Label:  "serves",
+		})
+	})
+
+	return nodes, edges
 }
 
 // stripPythonString removes quotes from Python string literals.
