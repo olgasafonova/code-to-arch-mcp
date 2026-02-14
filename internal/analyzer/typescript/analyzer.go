@@ -119,6 +119,11 @@ func (a *Analyzer) Analyze(path string) ([]*model.Node, []*model.Edge, error) {
 	nodes = append(nodes, routeNodes...)
 	edges = append(edges, routeEdges...)
 
+	// Detect outbound HTTP client calls
+	callNodes, callEdges := extractHTTPCalls(root, src, modID)
+	nodes = append(nodes, callNodes...)
+	edges = append(edges, callEdges...)
+
 	return nodes, edges, nil
 }
 
@@ -269,6 +274,98 @@ func extractRoutes(root *sitter.Node, src []byte, modID, filePath, framework str
 			Target: endpointID,
 			Type:   model.EdgeAPICall,
 			Label:  "serves",
+		})
+	})
+
+	return nodes, edges
+}
+
+// httpClientObjects are receiver/object names that indicate HTTP client calls.
+var httpClientObjects = map[string]bool{
+	"axios": true, "http": true, "client": true, "api": true,
+}
+
+// extractHTTPCalls detects outbound HTTP calls (fetch, axios.get, etc.)
+// and creates service nodes for target hosts.
+func extractHTTPCalls(root *sitter.Node, src []byte, modID string) ([]*model.Node, []*model.Edge) {
+	var nodes []*model.Node
+	var edges []*model.Edge
+
+	common.WalkTree(root, func(node *sitter.Node) {
+		if node.Type() != "call_expression" {
+			return
+		}
+
+		fn := node.ChildByFieldName("function")
+		if fn == nil {
+			return
+		}
+
+		var method string
+
+		switch fn.Type() {
+		case "identifier":
+			// fetch("http://...")
+			if fn.Content(src) != "fetch" {
+				return
+			}
+			method = "GET"
+		case "member_expression":
+			// axios.get("http://...") or client.post("http://...")
+			obj := fn.ChildByFieldName("object")
+			prop := fn.ChildByFieldName("property")
+			if obj == nil || prop == nil {
+				return
+			}
+			objName := obj.Content(src)
+			propName := strings.ToLower(prop.Content(src))
+			if !httpClientObjects[objName] || !httpMethods[propName] {
+				return
+			}
+			method = strings.ToUpper(propName)
+		default:
+			return
+		}
+
+		args := node.ChildByFieldName("arguments")
+		if args == nil || args.ChildCount() < 2 {
+			return
+		}
+		firstArg := args.Child(1) // Child(0) is "("
+		if firstArg == nil {
+			return
+		}
+
+		rawURL := extractStringLiteral(firstArg, src)
+		if rawURL == "" {
+			return
+		}
+
+		host, ok := common.ParseServiceFromURL(rawURL)
+		if !ok {
+			return
+		}
+
+		serviceID := "service:" + host
+		line := int(node.StartPoint().Row) + 1
+
+		nodes = append(nodes, &model.Node{
+			ID:   serviceID,
+			Name: host,
+			Type: model.NodeExternalAPI,
+			Properties: map[string]string{
+				"detected_via": "http_call",
+			},
+		})
+		edges = append(edges, &model.Edge{
+			Source: modID,
+			Target: serviceID,
+			Type:   model.EdgeAPICall,
+			Label:  method + " " + rawURL,
+			Properties: map[string]string{
+				"url":  rawURL,
+				"line": fmt.Sprintf("%d", line),
+			},
 		})
 	})
 

@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/olgasafonova/code-to-arch-mcp/internal/analyzer/common"
 	"github.com/olgasafonova/code-to-arch-mcp/internal/model"
 	"github.com/olgasafonova/code-to-arch-mcp/internal/scanner"
 )
@@ -79,7 +80,7 @@ func (a *Analyzer) Analyze(path string) ([]*model.Node, []*model.Edge, error) {
 	// Detect web framework from imports
 	framework := detectFramework(file)
 
-	// Walk AST for endpoint and infrastructure patterns
+	// Walk AST for endpoint, infrastructure, and HTTP client call patterns
 	ast.Inspect(file, func(n ast.Node) bool {
 		call, ok := n.(*ast.CallExpr)
 		if !ok {
@@ -87,6 +88,10 @@ func (a *Analyzer) Analyze(path string) ([]*model.Node, []*model.Edge, error) {
 		}
 
 		newNodes, newEdges := a.analyzeCall(call, pkgID, path, fset, framework)
+		nodes = append(nodes, newNodes...)
+		edges = append(edges, newEdges...)
+
+		newNodes, newEdges = extractHTTPCalls(call, pkgID, fset)
 		nodes = append(nodes, newNodes...)
 		edges = append(edges, newEdges...)
 
@@ -258,6 +263,81 @@ func (a *Analyzer) analyzeCall(call *ast.CallExpr, pkgID, filePath string, fset 
 	}
 
 	return nodes, edges
+}
+
+// httpClientFuncs maps function names to the argument index containing the URL.
+// http.Get(url) → index 0, http.Post(url, contentType, body) → index 0,
+// http.NewRequest(method, url, body) → index 1.
+var httpClientFuncs = map[string]int{
+	"Get":        0,
+	"Head":       0,
+	"Post":       0,
+	"PostForm":   0,
+	"NewRequest": 1,
+}
+
+// httpClientReceivers are the package/receiver names that indicate HTTP client calls.
+var httpClientReceivers = map[string]bool{
+	"http": true,
+}
+
+// extractHTTPCalls detects outbound HTTP client calls (http.Get, http.Post, etc.)
+// and creates service nodes for the target hosts.
+func extractHTTPCalls(call *ast.CallExpr, pkgID string, fset *token.FileSet) ([]*model.Node, []*model.Edge) {
+	sel, ok := call.Fun.(*ast.SelectorExpr)
+	if !ok {
+		return nil, nil
+	}
+
+	ident, ok := sel.X.(*ast.Ident)
+	if !ok || !httpClientReceivers[ident.Name] {
+		return nil, nil
+	}
+
+	urlArgIdx, known := httpClientFuncs[sel.Sel.Name]
+	if !known || len(call.Args) <= urlArgIdx {
+		return nil, nil
+	}
+
+	lit, ok := call.Args[urlArgIdx].(*ast.BasicLit)
+	if !ok || lit.Kind != token.STRING {
+		return nil, nil
+	}
+
+	rawURL := strings.Trim(lit.Value, `"`)
+	host, ok := common.ParseServiceFromURL(rawURL)
+	if !ok {
+		return nil, nil
+	}
+
+	serviceID := "service:" + host
+	pos := fset.Position(call.Pos())
+	method := strings.ToUpper(sel.Sel.Name)
+	if method == "NEWREQUEST" && len(call.Args) > 0 {
+		if mLit, ok := call.Args[0].(*ast.BasicLit); ok && mLit.Kind == token.STRING {
+			method = strings.Trim(mLit.Value, `"`)
+		}
+	}
+
+	node := &model.Node{
+		ID:   serviceID,
+		Name: host,
+		Type: model.NodeExternalAPI,
+		Properties: map[string]string{
+			"detected_via": "http_call",
+		},
+	}
+	edge := &model.Edge{
+		Source: pkgID,
+		Target: serviceID,
+		Type:   model.EdgeAPICall,
+		Label:  method + " " + rawURL,
+		Properties: map[string]string{
+			"url":  rawURL,
+			"line": fmt.Sprintf("%d", pos.Line),
+		},
+	}
+	return []*model.Node{node}, []*model.Edge{edge}
 }
 
 // callFuncName extracts the function name from a call expression.

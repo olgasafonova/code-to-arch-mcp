@@ -2,6 +2,7 @@
 package common
 
 import (
+	"net/url"
 	"strings"
 
 	sitter "github.com/smacker/go-tree-sitter"
@@ -53,6 +54,23 @@ func MatchesAny(importPath string, patterns []string, separator string) bool {
 		}
 	}
 	return false
+}
+
+// ParseServiceFromURL extracts the host from a URL string.
+// Returns empty string if the URL is relative, has no host, or uses a non-HTTP scheme.
+func ParseServiceFromURL(rawURL string) (host string, ok bool) {
+	u, err := url.Parse(rawURL)
+	if err != nil {
+		return "", false
+	}
+	if u.Scheme != "" && u.Scheme != "http" && u.Scheme != "https" {
+		return "", false
+	}
+	h := u.Hostname()
+	if h == "" {
+		return "", false
+	}
+	return h, true
 }
 
 // WalkTree performs a depth-first traversal of a tree-sitter node,

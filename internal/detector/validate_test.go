@@ -12,7 +12,7 @@ func TestValidateGraph_Clean(t *testing.T) {
 	graph.AddNode(&model.Node{ID: "infra:db", Name: "DB", Type: model.NodeDatabase})
 	graph.AddEdge(&model.Edge{Source: "svc:api", Target: "infra:db", Type: model.EdgeReadWrite})
 
-	violations := ValidateGraph(graph)
+	violations := ValidateGraph(graph, nil)
 
 	if len(violations) != 0 {
 		t.Fatalf("expected 0 violations for clean graph, got %d: %v", len(violations), violations)
@@ -26,7 +26,7 @@ func TestValidateGraph_Cycle(t *testing.T) {
 	graph.AddEdge(&model.Edge{Source: "pkg:a", Target: "pkg:b", Type: model.EdgeDependency})
 	graph.AddEdge(&model.Edge{Source: "pkg:b", Target: "pkg:a", Type: model.EdgeDependency})
 
-	violations := ValidateGraph(graph)
+	violations := ValidateGraph(graph, nil)
 
 	foundCycle := false
 	for _, v := range violations {
@@ -46,7 +46,7 @@ func TestValidateGraph_OrphanNode(t *testing.T) {
 	graph.AddNode(&model.Node{ID: "infra:db", Name: "DB", Type: model.NodeDatabase})
 	graph.AddEdge(&model.Edge{Source: "svc:api", Target: "infra:db", Type: model.EdgeReadWrite})
 
-	violations := ValidateGraph(graph)
+	violations := ValidateGraph(graph, nil)
 
 	foundOrphan := false
 	for _, v := range violations {
@@ -65,7 +65,7 @@ func TestValidateGraph_LayeringViolation(t *testing.T) {
 	graph.AddNode(&model.Node{ID: "infra:db", Name: "DB", Type: model.NodeDatabase})
 	graph.AddEdge(&model.Edge{Source: "endpoint:api:1", Target: "infra:db", Type: model.EdgeReadWrite})
 
-	violations := ValidateGraph(graph)
+	violations := ValidateGraph(graph, nil)
 
 	foundLayering := false
 	for _, v := range violations {
@@ -87,7 +87,7 @@ func TestValidateGraph_NoCycleInDAG(t *testing.T) {
 	graph.AddEdge(&model.Edge{Source: "pkg:b", Target: "pkg:c", Type: model.EdgeDependency})
 	graph.AddEdge(&model.Edge{Source: "pkg:a", Target: "pkg:c", Type: model.EdgeDependency})
 
-	violations := ValidateGraph(graph)
+	violations := ValidateGraph(graph, nil)
 
 	for _, v := range violations {
 		if v.Rule == "no_circular_dependencies" {

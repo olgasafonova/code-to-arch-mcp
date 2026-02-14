@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"os"
 	"path/filepath"
 	"strings"
 	"time"
@@ -69,6 +70,8 @@ func (h *HandlerRegistry) RegisterAll(server *mcp.Server) {
 			register(h, server, spec, h.archHistory)
 		case "ArchSnapshot":
 			register(h, server, spec, h.archSnapshot)
+		case "ArchMetrics":
+			register(h, server, spec, h.archMetrics)
 		case "ArchExplain":
 			register(h, server, spec, h.archExplain)
 		}
@@ -551,7 +554,17 @@ func (h *HandlerRegistry) archValidate(ctx context.Context, args ArchValidateArg
 		return nil, fmt.Errorf("scanning codebase: %w", err)
 	}
 
-	detectedViolations := detector.ValidateGraph(graph)
+	// Load custom rules if .arch-rules.yaml exists in the project
+	var customRules *detector.RulesConfig
+	rulesPath := filepath.Join(args.Path, ".arch-rules.yaml")
+	if _, err := os.Stat(rulesPath); err == nil {
+		customRules, err = detector.LoadRules(rulesPath)
+		if err != nil {
+			h.logger.Warn("Failed to load custom rules", "path", rulesPath, "error", err)
+		}
+	}
+
+	detectedViolations := detector.ValidateGraph(graph, customRules)
 	var violations []string
 	for _, v := range detectedViolations {
 		violations = append(violations, fmt.Sprintf("[%s] %s: %s", v.Severity, v.Rule, v.Detail))
@@ -684,6 +697,35 @@ func (h *HandlerRegistry) archSnapshot(ctx context.Context, args ArchSnapshotArg
 		NodeCount: len(snap.Nodes),
 		EdgeCount: len(snap.Edges),
 		Summary:   fmt.Sprintf("Saved snapshot with %d nodes and %d edges to %s", len(snap.Nodes), len(snap.Edges), outFile),
+	}, nil
+}
+
+type ArchMetricsArgs struct {
+	Path string `json:"path"`
+	ScanControl
+}
+
+type ArchMetricsResult struct {
+	*detector.Metrics
+	Summary string `json:"summary"`
+}
+
+func (h *HandlerRegistry) archMetrics(ctx context.Context, args ArchMetricsArgs) (*ArchMetricsResult, error) {
+	if err := safepath.ValidateScanPath(args.Path); err != nil {
+		return nil, err
+	}
+
+	graph, _, err := h.scanPath(ctx, args.Path, args.ScanControl)
+	if err != nil {
+		return nil, fmt.Errorf("scanning codebase: %w", err)
+	}
+
+	metrics := detector.ComputeMetrics(graph)
+
+	return &ArchMetricsResult{
+		Metrics: metrics,
+		Summary: fmt.Sprintf("Analyzed %d components: avg coupling %.1f, avg instability %.2f, max depth %d",
+			graph.NodeCount(), metrics.AvgCoupling, metrics.AvgInstability, metrics.MaxDepth),
 	}, nil
 }
 

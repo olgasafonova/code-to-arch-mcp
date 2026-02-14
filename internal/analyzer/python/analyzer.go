@@ -94,6 +94,11 @@ func (a *Analyzer) Analyze(path string) ([]*model.Node, []*model.Edge, error) {
 		edges = append(edges, djangoEdges...)
 	}
 
+	// Detect outbound HTTP client calls
+	callNodes, callEdges := extractHTTPCalls(root, src, modID)
+	nodes = append(nodes, callNodes...)
+	edges = append(edges, callEdges...)
+
 	return nodes, edges, nil
 }
 
@@ -406,6 +411,80 @@ func extractDjangoURLPatterns(root *sitter.Node, src []byte, modID, filePath str
 			Target: endpointID,
 			Type:   model.EdgeAPICall,
 			Label:  "serves",
+		})
+	})
+
+	return nodes, edges
+}
+
+// httpClientObjects are receiver names that indicate HTTP client calls in Python.
+var httpClientObjects = map[string]bool{
+	"requests": true, "httpx": true, "session": true, "client": true,
+}
+
+// extractHTTPCalls detects outbound HTTP calls (requests.get, httpx.post, etc.)
+// and creates service nodes for target hosts.
+func extractHTTPCalls(root *sitter.Node, src []byte, modID string) ([]*model.Node, []*model.Edge) {
+	var nodes []*model.Node
+	var edges []*model.Edge
+
+	common.WalkTree(root, func(node *sitter.Node) {
+		if node.Type() != "call" {
+			return
+		}
+
+		fn := node.ChildByFieldName("function")
+		if fn == nil || fn.Type() != "attribute" {
+			return
+		}
+
+		obj := fn.ChildByFieldName("object")
+		attr := fn.ChildByFieldName("attribute")
+		if obj == nil || attr == nil {
+			return
+		}
+
+		objName := obj.Content(src)
+		methodName := strings.ToLower(attr.Content(src))
+		if !httpClientObjects[objName] || !httpMethods[methodName] {
+			return
+		}
+
+		args := node.ChildByFieldName("arguments")
+		if args == nil {
+			return
+		}
+
+		rawURL := extractFirstStringArg(args, src)
+		if rawURL == "" {
+			return
+		}
+
+		host, ok := common.ParseServiceFromURL(rawURL)
+		if !ok {
+			return
+		}
+
+		serviceID := "service:" + host
+		line := int(node.StartPoint().Row) + 1
+
+		nodes = append(nodes, &model.Node{
+			ID:   serviceID,
+			Name: host,
+			Type: model.NodeExternalAPI,
+			Properties: map[string]string{
+				"detected_via": "http_call",
+			},
+		})
+		edges = append(edges, &model.Edge{
+			Source: modID,
+			Target: serviceID,
+			Type:   model.EdgeAPICall,
+			Label:  strings.ToUpper(methodName) + " " + rawURL,
+			Properties: map[string]string{
+				"url":  rawURL,
+				"line": fmt.Sprintf("%d", line),
+			},
 		})
 	})
 

@@ -146,6 +146,18 @@ Writes a JSON snapshot file that arch_diff can compare against.`,
 		ReadOnly: false, // writes a snapshot file
 	},
 	{
+		Name:   "arch_metrics",
+		Method: "ArchMetrics",
+		Title:  "Architecture Fitness Metrics",
+		Description: `Compute structural metrics: coupling, instability, dependency depth.
+USE WHEN the user asks about code quality, technical debt, architectural health,
+or wants numeric scores to track over time.
+Returns per-component coupling and instability scores plus project-wide averages.`,
+		Category:   "validation",
+		ReadOnly:   true,
+		Idempotent: true,
+	},
+	{
 		Name:   "arch_explain",
 		Method: "ArchExplain",
 		Title:  "Explain Architecture",

@@ -89,7 +89,11 @@ Point any tool at a codebase directory path.
 
 ### Validation:
 "Are there any architecture problems?"
--> USE: arch_validate (circular deps, layering violations)
+-> USE: arch_validate (circular deps, layering violations, custom .arch-rules.yaml)
+
+### Fitness metrics:
+"How healthy is the architecture?"
+-> USE: arch_metrics (coupling, instability, dependency depth scores)
 
 ### History:
 "How has the architecture evolved?"
@@ -109,7 +113,7 @@ Go (go/ast), TypeScript (tree-sitter), Python (tree-sitter)
 
 ## Output Formats
 
-mermaid, plantuml, c4, structurizr, json`,
+mermaid, plantuml, c4, structurizr, drawio, excalidraw, json`,
 	})
 
 	// Register tools

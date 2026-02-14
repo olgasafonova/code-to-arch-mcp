@@ -14,12 +14,15 @@ type Violation struct {
 	Detail   string             `json:"detail"`
 }
 
-// ValidateGraph checks the graph against architecture rules.
-func ValidateGraph(graph *model.ArchGraph) []Violation {
+// ValidateGraph checks the graph against built-in and custom architecture rules.
+func ValidateGraph(graph *model.ArchGraph, customRules *RulesConfig) []Violation {
 	var violations []Violation
 	violations = append(violations, checkCycles(graph)...)
 	violations = append(violations, checkOrphans(graph)...)
 	violations = append(violations, checkLayeringViolations(graph)...)
+	if customRules != nil {
+		violations = append(violations, CheckCustomRules(graph, customRules, graph.RootPath)...)
+	}
 	return violations
 }
 
