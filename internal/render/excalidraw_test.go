@@ -78,6 +78,46 @@ func TestExcalidraw_ViewLevelFiltering(t *testing.T) {
 	}
 }
 
+func TestExcalidraw_TopologicalLayout(t *testing.T) {
+	// Build a 3-layer graph: app → svc → db
+	graph := model.NewGraph("/tmp/test")
+	graph.AddNode(&model.Node{ID: "pkg:app", Name: "app", Type: model.NodePackage})
+	graph.AddNode(&model.Node{ID: "pkg:svc", Name: "svc", Type: model.NodePackage})
+	graph.AddNode(&model.Node{ID: "infra:db", Name: "db", Type: model.NodeDatabase})
+	graph.AddEdge(&model.Edge{Source: "pkg:app", Target: "pkg:svc", Type: model.EdgeDependency})
+	graph.AddEdge(&model.Edge{Source: "pkg:svc", Target: "infra:db", Type: model.EdgeReadWrite})
+
+	out := Excalidraw(graph, Options{ViewLevel: ViewComponent})
+
+	var parsed map[string]any
+	json.Unmarshal([]byte(out), &parsed)
+
+	elements := parsed["elements"].([]any)
+
+	// Extract Y for rectangle elements by name
+	yOf := func(name string) float64 {
+		for _, el := range elements {
+			m := el.(map[string]any)
+			if m["type"] == "text" && m["text"] == name {
+				return m["y"].(float64)
+			}
+		}
+		t.Fatalf("could not find element %s", name)
+		return 0
+	}
+
+	appY := yOf("app")
+	svcY := yOf("svc")
+	dbY := yOf("db")
+
+	if appY >= svcY {
+		t.Errorf("app (y=%.0f) should be above svc (y=%.0f)", appY, svcY)
+	}
+	if svcY >= dbY {
+		t.Errorf("svc (y=%.0f) should be above db (y=%.0f)", svcY, dbY)
+	}
+}
+
 func TestExcalidraw_EmptyGraph(t *testing.T) {
 	graph := model.NewGraph("/tmp/test")
 
