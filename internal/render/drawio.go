@@ -8,16 +8,17 @@ import (
 )
 
 const (
-	drawIOCellWidth  = 200
-	drawIOCellHeight = 60
-	drawIOGapX       = 40
-	drawIOGapY       = 80
-	drawIOColsPerRow = 4
-	drawIOMarginX    = 40
-	drawIOMarginY    = 40
+	drawIOCellW   = 200
+	drawIOCellH   = 60
+	drawIOGapX    = 60
+	drawIOGapY    = 120
+	drawIOMarginX = 40
+	drawIOMarginY = 40
 )
 
 // DrawIO renders an ArchGraph as draw.io (mxGraphModel) XML.
+// Nodes are arranged in topological layers: root packages at the top,
+// leaf dependencies at the bottom.
 func DrawIO(graph *model.ArchGraph, opts Options) string {
 	var sb strings.Builder
 
@@ -28,30 +29,107 @@ func DrawIO(graph *model.ArchGraph, opts Options) string {
 	sb.WriteString("    <mxCell id=\"0\"/>\n")
 	sb.WriteString("    <mxCell id=\"1\" parent=\"0\"/>\n")
 
-	// Layout nodes in a grid
-	for i, n := range vg.Nodes {
-		id := SanitizeID(n.ID)
-		style := drawIOStyle(n.Type)
-		col := i % drawIOColsPerRow
-		row := i / drawIOColsPerRow
-		x := drawIOMarginX + col*(drawIOCellWidth+drawIOGapX)
-		y := drawIOMarginY + row*(drawIOCellHeight+drawIOGapY)
-
-		fmt.Fprintf(&sb, "    <mxCell id=\"%s\" value=\"%s\" style=\"%s\" vertex=\"1\" parent=\"1\">\n",
-			id, xmlEscape(n.Name), style)
-		fmt.Fprintf(&sb, "      <mxGeometry x=\"%d\" y=\"%d\" width=\"%d\" height=\"%d\" as=\"geometry\"/>\n",
-			x, y, drawIOCellWidth, drawIOCellHeight)
-		sb.WriteString("    </mxCell>\n")
+	// Build adjacency for topological layering.
+	// Edges go source → target (source depends on target).
+	outgoing := make(map[string][]string)
+	nodeByID := make(map[string]*model.Node)
+	for _, n := range vg.Nodes {
+		nodeByID[n.ID] = n
+	}
+	for _, e := range vg.Edges {
+		if _, ok := nodeByID[e.Source]; !ok {
+			continue
+		}
+		if _, ok := nodeByID[e.Target]; !ok {
+			continue
+		}
+		outgoing[e.Source] = append(outgoing[e.Source], e.Target)
 	}
 
-	// Render edges
+	// Compute depth = longest path through outgoing edges.
+	// Leaf nodes (no outgoing) get depth 0; roots get highest depth.
+	depth := make(map[string]int)
+	computing := make(map[string]bool)
+
+	var computeDepth func(string) int
+	computeDepth = func(id string) int {
+		if d, ok := depth[id]; ok {
+			return d
+		}
+		if computing[id] {
+			return 0
+		}
+		computing[id] = true
+		maxChild := -1
+		for _, t := range outgoing[id] {
+			if cd := computeDepth(t); cd > maxChild {
+				maxChild = cd
+			}
+		}
+		d := maxChild + 1
+		depth[id] = d
+		delete(computing, id)
+		return d
+	}
+
+	for _, n := range vg.Nodes {
+		computeDepth(n.ID)
+	}
+
+	// Group nodes by depth layer.
+	maxDepth := 0
+	for _, d := range depth {
+		if d > maxDepth {
+			maxDepth = d
+		}
+	}
+
+	layerNodes := make([][]*model.Node, maxDepth+1)
+	for _, n := range vg.Nodes {
+		layerNodes[depth[n.ID]] = append(layerNodes[depth[n.ID]], n)
+	}
+
+	// Find widest layer for centering.
+	maxCount := 0
+	for _, nodes := range layerNodes {
+		if len(nodes) > maxCount {
+			maxCount = len(nodes)
+		}
+	}
+	if maxCount == 0 {
+		maxCount = 1
+	}
+	maxWidth := maxCount*drawIOCellW + (maxCount-1)*drawIOGapX
+
+	// Position: highest depth at top (row 0), depth 0 at bottom.
+	for d := maxDepth; d >= 0; d-- {
+		nodes := layerNodes[d]
+		row := maxDepth - d
+		layerWidth := len(nodes)*drawIOCellW + (len(nodes)-1)*drawIOGapX
+		offsetX := (maxWidth - layerWidth) / 2
+
+		for j, n := range nodes {
+			id := SanitizeID(n.ID)
+			style := drawIOStyle(n.Type)
+			x := drawIOMarginX + offsetX + j*(drawIOCellW+drawIOGapX)
+			y := drawIOMarginY + row*(drawIOCellH+drawIOGapY)
+
+			fmt.Fprintf(&sb, "    <mxCell id=\"%s\" value=\"%s\" style=\"%s\" vertex=\"1\" parent=\"1\">\n",
+				id, xmlEscape(n.Name), style)
+			fmt.Fprintf(&sb, "      <mxGeometry x=\"%d\" y=\"%d\" width=\"%d\" height=\"%d\" as=\"geometry\"/>\n",
+				x, y, drawIOCellW, drawIOCellH)
+			sb.WriteString("    </mxCell>\n")
+		}
+	}
+
+	// Render edges with curved routing to reduce label overlap.
 	for i, e := range vg.Edges {
 		label := e.Label
 		if label == "" {
 			label = string(e.Type)
 		}
 		edgeID := fmt.Sprintf("edge_%d", i)
-		fmt.Fprintf(&sb, "    <mxCell id=\"%s\" value=\"%s\" style=\"edgeStyle=orthogonalEdgeStyle;\" edge=\"1\" source=\"%s\" target=\"%s\" parent=\"1\">\n",
+		fmt.Fprintf(&sb, "    <mxCell id=\"%s\" value=\"%s\" style=\"curved=1;endArrow=blockThin;endFill=1;fontSize=11;\" edge=\"1\" source=\"%s\" target=\"%s\" parent=\"1\">\n",
 			edgeID, xmlEscape(label), SanitizeID(e.Source), SanitizeID(e.Target))
 		sb.WriteString("      <mxGeometry relative=\"1\" as=\"geometry\"/>\n")
 		sb.WriteString("    </mxCell>\n")
