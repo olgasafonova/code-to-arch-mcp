@@ -104,6 +104,14 @@ func DrawIO(graph *model.ArchGraph, opts Options) string {
 	}
 	maxWidth := maxCount*drawIOCellW + (maxCount-1)*drawIOGapX
 
+	// Track node positions and group bounds by NodeType.
+	type bounds struct {
+		minX, minY, maxX, maxY int
+		label                  string
+	}
+	groupBounds := make(map[model.NodeType]*bounds)
+	groupPad := 16
+
 	// Position: highest depth at top (row 0), depth 0 at bottom.
 	for d := maxDepth; d >= 0; d-- {
 		nodes := layerNodes[d]
@@ -122,7 +130,42 @@ func DrawIO(graph *model.ArchGraph, opts Options) string {
 			fmt.Fprintf(&sb, "      <mxGeometry x=\"%d\" y=\"%d\" width=\"%d\" height=\"%d\" as=\"geometry\"/>\n",
 				x, y, drawIOCellW, drawIOCellH)
 			sb.WriteString("    </mxCell>\n")
+
+			// Expand group bounds for this node type.
+			b := groupBounds[n.Type]
+			if b == nil {
+				b = &bounds{minX: x, minY: y, maxX: x + drawIOCellW, maxY: y + drawIOCellH, label: drawIOGroupLabel(n.Type)}
+				groupBounds[n.Type] = b
+			} else {
+				if x < b.minX {
+					b.minX = x
+				}
+				if y < b.minY {
+					b.minY = y
+				}
+				if x+drawIOCellW > b.maxX {
+					b.maxX = x + drawIOCellW
+				}
+				if y+drawIOCellH > b.maxY {
+					b.maxY = y + drawIOCellH
+				}
+			}
 		}
+	}
+
+	// Render group frames behind nodes.
+	for nt, b := range groupBounds {
+		gx := b.minX - groupPad
+		gy := b.minY - groupPad - 20 // extra space for label
+		gw := b.maxX - b.minX + 2*groupPad
+		gh := b.maxY - b.minY + 2*groupPad + 20
+		gID := fmt.Sprintf("group_%s", SanitizeID(string(nt)))
+		color := drawIOGroupColor(nt)
+		fmt.Fprintf(&sb, "    <mxCell id=\"%s\" value=\"%s\" style=\"rounded=1;whiteSpace=wrap;html=1;fillColor=%s;strokeColor=%s;opacity=30;verticalAlign=top;fontStyle=1;fontSize=12;\" vertex=\"1\" parent=\"1\">\n",
+			gID, xmlEscape(b.label), color, color)
+		fmt.Fprintf(&sb, "      <mxGeometry x=\"%d\" y=\"%d\" width=\"%d\" height=\"%d\" as=\"geometry\"/>\n",
+			gx, gy, gw, gh)
+		sb.WriteString("    </mxCell>\n")
 	}
 
 	// Render edges with curved routing to reduce label overlap.
@@ -154,6 +197,46 @@ func drawIOStyle(t model.NodeType) string {
 		return "shape=hexagon;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#666666;"
 	default:
 		return "rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;"
+	}
+}
+
+func drawIOGroupLabel(t model.NodeType) string {
+	switch t {
+	case model.NodeService:
+		return "Services"
+	case model.NodeDatabase:
+		return "Data Stores"
+	case model.NodeQueue:
+		return "Queues"
+	case model.NodeCache:
+		return "Caches"
+	case model.NodeExternalAPI:
+		return "External"
+	case model.NodeEndpoint:
+		return "Endpoints"
+	case model.NodePackage:
+		return "Packages"
+	case model.NodeModule:
+		return "Modules"
+	default:
+		return "Components"
+	}
+}
+
+func drawIOGroupColor(t model.NodeType) string {
+	switch t {
+	case model.NodeDatabase:
+		return "#82b366"
+	case model.NodeQueue:
+		return "#d6b656"
+	case model.NodeCache:
+		return "#b85450"
+	case model.NodeExternalAPI:
+		return "#9673a6"
+	case model.NodeEndpoint:
+		return "#666666"
+	default:
+		return "#6c8ebf"
 	}
 }
 

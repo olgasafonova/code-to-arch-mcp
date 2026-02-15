@@ -36,6 +36,7 @@ type excalidrawElement struct {
 	Height          int                `json:"height"`
 	Text            string             `json:"text,omitempty"`
 	FontSize        int                `json:"fontSize,omitempty"`
+	Opacity         int                `json:"opacity,omitempty"`
 	StrokeColor     string             `json:"strokeColor"`
 	BackgroundColor string             `json:"backgroundColor"`
 	FillStyle       string             `json:"fillStyle"`
@@ -133,6 +134,13 @@ func Excalidraw(graph *model.ArchGraph, opts Options) string {
 	}
 	maxWidth := maxCount*excaliCellW + (maxCount-1)*excaliGapX
 
+	// Track group bounds by NodeType for visual clustering.
+	type bounds struct {
+		minX, minY, maxX, maxY int
+	}
+	groupBounds := make(map[model.NodeType]*bounds)
+	groupPad := 16
+
 	// Position: highest depth at top (row 0), depth 0 at bottom.
 	for d := maxDepth; d >= 0; d-- {
 		nodes := layerNodes[d]
@@ -176,7 +184,69 @@ func Excalidraw(graph *model.ArchGraph, opts Options) string {
 				FillStyle:       "solid",
 				ContainerID:     rectID,
 			})
+
+			// Expand group bounds.
+			b := groupBounds[n.Type]
+			if b == nil {
+				b = &bounds{minX: x, minY: y, maxX: x + excaliCellW, maxY: y + excaliCellH}
+				groupBounds[n.Type] = b
+			} else {
+				if x < b.minX {
+					b.minX = x
+				}
+				if y < b.minY {
+					b.minY = y
+				}
+				if x+excaliCellW > b.maxX {
+					b.maxX = x + excaliCellW
+				}
+				if y+excaliCellH > b.maxY {
+					b.maxY = y + excaliCellH
+				}
+			}
 		}
+	}
+
+	// Add group frame elements (rendered behind nodes in Excalidraw via order).
+	var groupElements []excalidrawElement
+	for nt, b := range groupBounds {
+		gx := b.minX - groupPad
+		gy := b.minY - groupPad - 24 // extra space for label
+		gw := b.maxX - b.minX + 2*groupPad
+		gh := b.maxY - b.minY + 2*groupPad + 24
+
+		frameID := fmt.Sprintf("group_%s", SanitizeID(string(nt)))
+		labelID := frameID + "_label"
+
+		groupElements = append(groupElements, excalidrawElement{
+			ID:              frameID,
+			Type:            "rectangle",
+			X:               gx,
+			Y:               gy,
+			Width:           gw,
+			Height:          gh,
+			Opacity:         20,
+			StrokeColor:     excalidrawBgColor(nt),
+			BackgroundColor: excalidrawBgColor(nt),
+			FillStyle:       "solid",
+		})
+		groupElements = append(groupElements, excalidrawElement{
+			ID:              labelID,
+			Type:            "text",
+			X:               gx + 8,
+			Y:               gy + 4,
+			Width:           gw - 16,
+			Height:          20,
+			Text:            drawIOGroupLabel(nt),
+			FontSize:        12,
+			StrokeColor:     "#868e96",
+			BackgroundColor: "transparent",
+			FillStyle:       "solid",
+		})
+	}
+	// Prepend groups so they appear behind node elements.
+	if len(groupElements) > 0 {
+		elements = append(groupElements, elements...)
 	}
 
 	// Create arrow elements for edges
