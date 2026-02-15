@@ -222,6 +222,74 @@ func TestFilterGraph_SkipsSelfEdges(t *testing.T) {
 	}
 }
 
+func TestTransitiveReduce_RemovesRedundantEdges(t *testing.T) {
+	// A → B → C, plus direct A → C (redundant)
+	g := model.NewGraph("/tmp")
+	g.AddNode(&model.Node{ID: "pkg:a", Name: "a", Type: model.NodePackage})
+	g.AddNode(&model.Node{ID: "pkg:b", Name: "b", Type: model.NodePackage})
+	g.AddNode(&model.Node{ID: "pkg:c", Name: "c", Type: model.NodePackage})
+	g.AddEdge(&model.Edge{Source: "pkg:a", Target: "pkg:b", Type: model.EdgeDependency})
+	g.AddEdge(&model.Edge{Source: "pkg:b", Target: "pkg:c", Type: model.EdgeDependency})
+	g.AddEdge(&model.Edge{Source: "pkg:a", Target: "pkg:c", Type: model.EdgeDependency}) // redundant
+
+	vg := FilterGraph(g, ViewComponent)
+	if len(vg.Edges) != 3 {
+		t.Fatalf("before reduction: expected 3 edges, got %d", len(vg.Edges))
+	}
+
+	vg.TransitiveReduce()
+
+	if len(vg.Edges) != 2 {
+		t.Fatalf("after reduction: expected 2 edges, got %d", len(vg.Edges))
+	}
+
+	// A→C should be removed, A→B and B→C should remain
+	for _, e := range vg.Edges {
+		if e.Source == "pkg:a" && e.Target == "pkg:c" {
+			t.Error("transitive edge A→C should have been removed")
+		}
+	}
+}
+
+func TestTransitiveReduce_PreservesDifferentTypes(t *testing.T) {
+	// A → B (dependency), B → C (dependency), A → C (api_call)
+	// A→C is NOT redundant because it's a different edge type.
+	g := model.NewGraph("/tmp")
+	g.AddNode(&model.Node{ID: "svc:a", Name: "a", Type: model.NodeService})
+	g.AddNode(&model.Node{ID: "svc:b", Name: "b", Type: model.NodeService})
+	g.AddNode(&model.Node{ID: "svc:c", Name: "c", Type: model.NodeService})
+	g.AddEdge(&model.Edge{Source: "svc:a", Target: "svc:b", Type: model.EdgeDependency})
+	g.AddEdge(&model.Edge{Source: "svc:b", Target: "svc:c", Type: model.EdgeDependency})
+	g.AddEdge(&model.Edge{Source: "svc:a", Target: "svc:c", Type: model.EdgeAPICall})
+
+	vg := FilterGraph(g, ViewContainer)
+	vg.TransitiveReduce()
+
+	if len(vg.Edges) != 3 {
+		t.Fatalf("expected all 3 edges preserved (different types), got %d", len(vg.Edges))
+	}
+}
+
+func TestTransitiveReduce_DeepChain(t *testing.T) {
+	// A → B → C → D, plus A → C and A → D (both redundant)
+	g := model.NewGraph("/tmp")
+	for _, id := range []string{"a", "b", "c", "d"} {
+		g.AddNode(&model.Node{ID: "pkg:" + id, Name: id, Type: model.NodePackage})
+	}
+	g.AddEdge(&model.Edge{Source: "pkg:a", Target: "pkg:b", Type: model.EdgeDependency})
+	g.AddEdge(&model.Edge{Source: "pkg:b", Target: "pkg:c", Type: model.EdgeDependency})
+	g.AddEdge(&model.Edge{Source: "pkg:c", Target: "pkg:d", Type: model.EdgeDependency})
+	g.AddEdge(&model.Edge{Source: "pkg:a", Target: "pkg:c", Type: model.EdgeDependency}) // redundant
+	g.AddEdge(&model.Edge{Source: "pkg:a", Target: "pkg:d", Type: model.EdgeDependency}) // redundant
+
+	vg := FilterGraph(g, ViewComponent)
+	vg.TransitiveReduce()
+
+	if len(vg.Edges) != 3 {
+		t.Fatalf("expected 3 edges (chain only), got %d", len(vg.Edges))
+	}
+}
+
 func TestSanitizeID(t *testing.T) {
 	tests := []struct {
 		input, expected string

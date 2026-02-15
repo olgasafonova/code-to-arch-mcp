@@ -23,6 +23,7 @@ func DrawIO(graph *model.ArchGraph, opts Options) string {
 	var sb strings.Builder
 
 	vg := FilterGraph(graph, opts.ViewLevel)
+	vg.TransitiveReduce()
 
 	sb.WriteString("<mxGraphModel>\n")
 	sb.WriteString("  <root>\n")

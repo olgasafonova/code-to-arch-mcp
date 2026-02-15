@@ -57,6 +57,65 @@ func FilterGraph(graph *model.ArchGraph, level ViewLevel) *VisibleGraph {
 	return &VisibleGraph{Nodes: nodes, Edges: edges, IDs: ids}
 }
 
+// TransitiveReduce removes edges that are implied by longer paths.
+// For each edge (u→v) of type T, if v is reachable from u through
+// intermediate nodes using only edges of type T, the direct edge is redundant.
+func (vg *VisibleGraph) TransitiveReduce() {
+	// Build adjacency grouped by edge type.
+	type adjKey = string
+	adj := make(map[adjKey]map[string][]string) // edgeType → source → targets
+	for _, e := range vg.Edges {
+		t := string(e.Type)
+		if adj[t] == nil {
+			adj[t] = make(map[string][]string)
+		}
+		adj[t][e.Source] = append(adj[t][e.Source], e.Target)
+	}
+
+	var kept []*model.Edge
+	for _, e := range vg.Edges {
+		if transitiveReachable(adj[string(e.Type)], e.Source, e.Target) {
+			continue
+		}
+		kept = append(kept, e)
+	}
+	vg.Edges = kept
+}
+
+// transitiveReachable checks if target is reachable from source via a path
+// of length >= 2 (through intermediate nodes).
+func transitiveReachable(adj map[string][]string, source, target string) bool {
+	visited := map[string]bool{source: true}
+	queue := make([]string, 0)
+
+	// Seed BFS with source's neighbors, excluding the direct target.
+	for _, neighbor := range adj[source] {
+		if neighbor == target {
+			continue
+		}
+		if !visited[neighbor] {
+			visited[neighbor] = true
+			queue = append(queue, neighbor)
+		}
+	}
+
+	for len(queue) > 0 {
+		curr := queue[0]
+		queue = queue[1:]
+
+		if curr == target {
+			return true
+		}
+		for _, next := range adj[curr] {
+			if !visited[next] {
+				visited[next] = true
+				queue = append(queue, next)
+			}
+		}
+	}
+	return false
+}
+
 // SanitizeID replaces characters that are invalid in diagram node IDs.
 // Different separators use distinct replacements to avoid collisions
 // (e.g., "api/v1" and "api.v1" produce different IDs).

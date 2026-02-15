@@ -17,6 +17,7 @@ func C4(graph *model.ArchGraph, opts Options) string {
 	}
 
 	vg := FilterGraph(graph, opts.ViewLevel)
+	vg.TransitiveReduce()
 
 	sb.WriteString("@startuml\n")
 	sb.WriteString("!include <C4/C4_Container>\n\n")

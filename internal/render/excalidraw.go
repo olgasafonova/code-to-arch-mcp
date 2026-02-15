@@ -57,6 +57,7 @@ type excalidrawBinding struct {
 // leaf dependencies at the bottom.
 func Excalidraw(graph *model.ArchGraph, opts Options) string {
 	vg := FilterGraph(graph, opts.ViewLevel)
+	vg.TransitiveReduce()
 	nodePositions := make(map[string][2]int) // id -> [x, y]
 
 	elements := make([]excalidrawElement, 0)

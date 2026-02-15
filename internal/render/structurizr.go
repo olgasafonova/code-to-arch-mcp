@@ -17,6 +17,7 @@ func Structurizr(graph *model.ArchGraph, opts Options) string {
 	}
 
 	vg := FilterGraph(graph, opts.ViewLevel)
+	vg.TransitiveReduce()
 
 	sb.WriteString("workspace {\n")
 	sb.WriteString("    model {\n")

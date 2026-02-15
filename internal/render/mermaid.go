@@ -65,6 +65,7 @@ func Mermaid(graph *model.ArchGraph, opts Options) string {
 	fmt.Fprintf(&sb, "graph %s\n", direction)
 
 	vg := FilterGraph(graph, opts.ViewLevel)
+	vg.TransitiveReduce()
 
 	// Render nodes grouped by type
 	renderNodeGroup(&sb, vg.Nodes, model.NodeService, "Services")
