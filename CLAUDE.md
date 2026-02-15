@@ -10,7 +10,7 @@ Go MCP server that scans codebases, generates architecture diagrams, and detects
 - `internal/analyzer/golang/` - Go AST-based analysis (import-based deps, stdlib HTTP endpoints, infra classification)
 - `internal/analyzer/typescript/` - tree-sitter TypeScript analysis (import-based deps, Express endpoints, infra classification)
 - `internal/analyzer/python/` - tree-sitter Python analysis (import-based deps, Flask/FastAPI endpoints, infra classification)
-- `internal/detector/` - Boundary detection, topology inference, dataflow tracing, rule validation
+- `internal/detector/` - Boundary detection, topology inference, dataflow tracing, rule validation, recommendations
 - `internal/render/` - Output renderers: Mermaid, PlantUML, C4, Structurizr, draw.io, Excalidraw
 - `internal/drift/` - Drift detection: graph comparison (exact ID match), severity classification, reports
 - `internal/infra/` - Cache, persistent state (persist.go for ~/.mcp-context/)
@@ -18,10 +18,10 @@ Go MCP server that scans codebases, generates architecture diagrams, and detects
 - `tracing/` - OpenTelemetry setup
 
 ## Tool Categories
-- **analysis** (5 tools): arch_scan, arch_focus, arch_dependencies, arch_dataflow, arch_boundaries, arch_explain
+- **analysis** (6 tools): arch_scan, arch_focus, arch_dependencies, arch_dataflow, arch_boundaries, arch_explain
 - **diagram** (1 tool): arch_generate
 - **drift** (2 tools): arch_diff, arch_drift
-- **validation** (1 tool): arch_validate
+- **validation** (3 tools): arch_validate, arch_metrics, arch_recommend
 - **history** (1 tool): arch_history
 - **export** (1 tool): arch_snapshot
 

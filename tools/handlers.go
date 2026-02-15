@@ -74,6 +74,8 @@ func (h *HandlerRegistry) RegisterAll(server *mcp.Server) {
 			register(h, server, spec, h.archMetrics)
 		case "ArchExplain":
 			register(h, server, spec, h.archExplain)
+		case "ArchRecommend":
+			register(h, server, spec, h.archRecommend)
 		}
 	}
 }
@@ -795,6 +797,64 @@ func (h *HandlerRegistry) archExplain(ctx context.Context, args ArchExplainArgs)
 	return &ArchExplainResult{
 		Explanation: explanation.Summary,
 		Evidence:    evidence,
+	}, nil
+}
+
+type ArchRecommendArgs struct {
+	Path  string `json:"path"`
+	Focus string `json:"focus,omitempty"` // filter by recommendation category
+	ScanControl
+}
+
+type ArchRecommendResult struct {
+	Recommendations []detector.Recommendation `json:"recommendations"`
+	Summary         string                    `json:"summary"`
+	MetricsSnapshot *detector.Metrics         `json:"metrics_snapshot"`
+}
+
+func (h *HandlerRegistry) archRecommend(ctx context.Context, args ArchRecommendArgs) (*ArchRecommendResult, error) {
+	if err := safepath.ValidateScanPath(args.Path); err != nil {
+		return nil, err
+	}
+
+	graph, _, err := h.scanPath(ctx, args.Path, args.ScanControl)
+	if err != nil {
+		return nil, fmt.Errorf("scanning codebase: %w", err)
+	}
+
+	// Load custom rules if present.
+	var customRules *detector.RulesConfig
+	rulesPath := filepath.Join(args.Path, ".arch-rules.yaml")
+	if _, statErr := os.Stat(rulesPath); statErr == nil {
+		customRules, _ = detector.LoadRules(rulesPath)
+	}
+
+	violations := detector.ValidateGraph(graph, customRules)
+	metrics := detector.ComputeMetrics(graph)
+	boundaries, _ := detector.DetectBoundaries(args.Path)
+	explanation := detector.ExplainArchitecture(graph, boundaries)
+
+	recs := detector.RecommendArchitecture(graph, violations, metrics, explanation)
+
+	// Filter by category if focus is set.
+	if args.Focus != "" {
+		filtered := make([]detector.Recommendation, 0, len(recs))
+		for _, r := range recs {
+			if r.Category == args.Focus {
+				filtered = append(filtered, r)
+			}
+		}
+		recs = filtered
+	}
+
+	if recs == nil {
+		recs = []detector.Recommendation{}
+	}
+
+	return &ArchRecommendResult{
+		Recommendations: recs,
+		Summary:         fmt.Sprintf("Generated %d recommendations for %s", len(recs), args.Path),
+		MetricsSnapshot: metrics,
 	}, nil
 }
 

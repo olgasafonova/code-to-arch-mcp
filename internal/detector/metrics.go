@@ -100,17 +100,23 @@ func computeMaxDepth(edges []*model.Edge, nodes []*model.Node) int {
 	}
 
 	memo := make(map[string]int)
+	visiting := make(map[string]bool) // cycle detection
 	var longest func(id string) int
 	longest = func(id string) int {
 		if v, ok := memo[id]; ok {
 			return v
 		}
+		if visiting[id] {
+			return 0 // back-edge: break cycle
+		}
+		visiting[id] = true
 		best := 0
 		for _, next := range adj[id] {
 			if d := 1 + longest(next); d > best {
 				best = d
 			}
 		}
+		visiting[id] = false
 		memo[id] = best
 		return best
 	}

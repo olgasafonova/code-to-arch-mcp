@@ -18,7 +18,7 @@ func ptr[T any](v T) *T {
 	return &v
 }
 
-// AllTools defines the 12 MCP tools for code-to-arch analysis.
+// AllTools defines the 14 MCP tools for code-to-arch analysis.
 var AllTools = []ToolSpec{
 	{
 		Name:   "arch_scan",
@@ -96,6 +96,7 @@ Detects boundaries from go.mod/package.json, cmd/ directories, Dockerfiles, and 
 		Title:  "Compare Against Baseline",
 		Description: `Compare current code architecture against a stored baseline snapshot.
 USE WHEN the user wants to check if the code has drifted from the documented architecture.
+For comparing two git refs (branches/tags) instead, use arch_drift.
 Returns a diff report with added/removed/modified components and severity classification.`,
 		Category:   "drift",
 		ReadOnly:   true,
@@ -108,6 +109,7 @@ Returns a diff report with added/removed/modified components and severity classi
 		Description: `Detect architectural drift between two git references (branches, tags, commits).
 USE WHEN the user wants to compare architecture between git refs,
 like "how has the architecture changed since v1.0?"
+For comparing against a saved baseline snapshot, use arch_diff instead.
 Scans both refs and reports differences.`,
 		Category:   "drift",
 		ReadOnly:   true,
@@ -152,6 +154,7 @@ Writes a JSON snapshot file that arch_diff can compare against.`,
 		Description: `Compute structural metrics: coupling, instability, dependency depth.
 USE WHEN the user asks about code quality, technical debt, architectural health,
 or wants numeric scores to track over time.
+For rule violations (circular deps, layering), use arch_validate instead.
 Returns per-component coupling and instability scores plus project-wide averages.`,
 		Category:   "validation",
 		ReadOnly:   true,
@@ -165,6 +168,18 @@ Returns per-component coupling and instability scores plus project-wide averages
 USE WHEN the user asks "why is it structured this way?" or "explain the architecture."
 Uses the scanned graph plus code patterns to provide architectural rationale.`,
 		Category:   "analysis",
+		ReadOnly:   true,
+		Idempotent: true,
+	},
+	{
+		Name:   "arch_recommend",
+		Method: "ArchRecommend",
+		Title:  "Recommend Architecture Improvements",
+		Description: `Analyze architecture and recommend specific improvements with priorities.
+USE WHEN the user asks "how should I improve this?" or "what should the architecture look like?"
+Combines validation, metrics, and pattern analysis to produce actionable recommendations.
+For just violations, use arch_validate. For just metrics, use arch_metrics.`,
+		Category:   "validation",
 		ReadOnly:   true,
 		Idempotent: true,
 	},
