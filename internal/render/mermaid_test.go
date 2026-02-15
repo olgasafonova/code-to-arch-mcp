@@ -290,6 +290,34 @@ func TestTransitiveReduce_DeepChain(t *testing.T) {
 	}
 }
 
+func TestBarycenterOrder_ReducesCrossings(t *testing.T) {
+	// Layer 0 (top): A, B
+	// Layer 1 (bottom): C, D
+	// Edges: A→D, B→C (crossing if layers stay [A,B],[C,D])
+	// After barycenter: layer 1 should become [D,C] to uncross.
+	a := &model.Node{ID: "a", Name: "a", Type: model.NodePackage}
+	b := &model.Node{ID: "b", Name: "b", Type: model.NodePackage}
+	c := &model.Node{ID: "c", Name: "c", Type: model.NodePackage}
+	d := &model.Node{ID: "d", Name: "d", Type: model.NodePackage}
+
+	layers := [][]*model.Node{
+		{a, b}, // layer 0
+		{c, d}, // layer 1
+	}
+	edges := []*model.Edge{
+		{Source: "a", Target: "d", Type: model.EdgeDependency},
+		{Source: "b", Target: "c", Type: model.EdgeDependency},
+	}
+
+	BarycenterOrder(layers, edges)
+
+	// After ordering, layer 1 should be [D, C] (D first since A is at pos 0)
+	if layers[1][0].ID != "d" || layers[1][1].ID != "c" {
+		t.Errorf("expected layer 1 = [d, c], got [%s, %s]",
+			layers[1][0].ID, layers[1][1].ID)
+	}
+}
+
 func TestEdgeLabel(t *testing.T) {
 	tests := []struct {
 		label      string

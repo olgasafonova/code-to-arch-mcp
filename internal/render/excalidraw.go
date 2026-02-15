@@ -120,6 +120,8 @@ func Excalidraw(graph *model.ArchGraph, opts Options) string {
 		layerNodes[depth[n.ID]] = append(layerNodes[depth[n.ID]], n)
 	}
 
+	BarycenterOrder(layerNodes, vg.Edges)
+
 	maxCount := 0
 	for _, nodes := range layerNodes {
 		if len(nodes) > maxCount {

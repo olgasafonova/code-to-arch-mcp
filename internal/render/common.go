@@ -1,8 +1,10 @@
 package render
 
 import (
-	"github.com/olgasafonova/code-to-arch-mcp/internal/model"
+	"sort"
 	"strings"
+
+	"github.com/olgasafonova/code-to-arch-mcp/internal/model"
 )
 
 // FilterNodesByViewLevel filters nodes based on the requested view level.
@@ -33,6 +35,7 @@ type VisibleGraph struct {
 	Nodes []*model.Node
 	Edges []*model.Edge
 	IDs   map[string]bool
+	Names map[string]string // node ID → display name
 }
 
 // FilterGraph returns nodes and edges visible at the given view level.
@@ -42,8 +45,10 @@ type VisibleGraph struct {
 func FilterGraph(graph *model.ArchGraph, level ViewLevel) *VisibleGraph {
 	nodes := FilterNodesByViewLevel(graph.Nodes(), level)
 	ids := make(map[string]bool, len(nodes))
+	names := make(map[string]string, len(nodes))
 	for _, n := range nodes {
 		ids[n.ID] = true
+		names[n.ID] = n.Name
 	}
 
 	var edges []*model.Edge
@@ -54,7 +59,7 @@ func FilterGraph(graph *model.ArchGraph, level ViewLevel) *VisibleGraph {
 		edges = append(edges, e)
 	}
 
-	return &VisibleGraph{Nodes: nodes, Edges: edges, IDs: ids}
+	return &VisibleGraph{Nodes: nodes, Edges: edges, IDs: ids, Names: names}
 }
 
 // TransitiveReduce removes edges that are implied by longer paths.
@@ -114,6 +119,80 @@ func transitiveReachable(adj map[string][]string, source, target string) bool {
 		}
 	}
 	return false
+}
+
+// BarycenterOrder reorders nodes within each topological layer to minimize
+// edge crossings. It takes layerNodes (grouped by depth, highest depth first)
+// and runs the barycenter heuristic: each node is placed at the average
+// position of its connected neighbors in the adjacent layer.
+// Two passes (top-down, then bottom-up) are enough for most DAGs.
+func BarycenterOrder(layerNodes [][]*model.Node, edges []*model.Edge) {
+	if len(layerNodes) < 2 {
+		return
+	}
+
+	// Build bidirectional adjacency.
+	neighbors := make(map[string][]string)
+	for _, e := range edges {
+		neighbors[e.Source] = append(neighbors[e.Source], e.Target)
+		neighbors[e.Target] = append(neighbors[e.Target], e.Source)
+	}
+
+	// Position index: node ID → position within its layer.
+	posOf := make(map[string]int)
+	rebuildPos := func() {
+		for _, layer := range layerNodes {
+			for j, n := range layer {
+				posOf[n.ID] = j
+			}
+		}
+	}
+	rebuildPos()
+
+	sortLayer := func(layer []*model.Node) {
+		bary := make(map[string]float64)
+		for _, n := range layer {
+			nbrs := neighbors[n.ID]
+			if len(nbrs) == 0 {
+				bary[n.ID] = float64(posOf[n.ID])
+				continue
+			}
+			sum := 0.0
+			for _, nb := range nbrs {
+				sum += float64(posOf[nb])
+			}
+			bary[n.ID] = sum / float64(len(nbrs))
+		}
+		sort.SliceStable(layer, func(i, j int) bool {
+			return bary[layer[i].ID] < bary[layer[j].ID]
+		})
+	}
+
+	// Top-down pass: fix layer 0, reorder layers 1..n based on layer above.
+	for i := 1; i < len(layerNodes); i++ {
+		sortLayer(layerNodes[i])
+		rebuildPos()
+	}
+	// Bottom-up pass: fix last layer, reorder layers n-1..0 based on layer below.
+	for i := len(layerNodes) - 2; i >= 0; i-- {
+		sortLayer(layerNodes[i])
+		rebuildPos()
+	}
+}
+
+// EdgeLabel returns a display label for an edge. It suppresses labels that
+// match the edge type name (e.g., "dependency" on a dependency edge) or that
+// duplicate the target node name, since both are redundant noise.
+func EdgeLabel(e *model.Edge, targetName string) string {
+	label := e.Label
+	if label == "" || label == string(e.Type) {
+		return ""
+	}
+	// Suppress label that just repeats the target node name.
+	if label == targetName {
+		return ""
+	}
+	return label
 }
 
 // SanitizeID replaces characters that are invalid in diagram node IDs.
