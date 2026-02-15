@@ -125,10 +125,7 @@ func DrawIO(graph *model.ArchGraph, opts Options) string {
 
 	// Render edges with curved routing to reduce label overlap.
 	for i, e := range vg.Edges {
-		label := e.Label
-		if label == "" {
-			label = string(e.Type)
-		}
+		label := EdgeLabel(e, vg.Names[e.Target])
 		edgeID := fmt.Sprintf("edge_%d", i)
 		fmt.Fprintf(&sb, "    <mxCell id=\"%s\" value=\"%s\" style=\"curved=1;endArrow=blockThin;endFill=1;fontSize=11;\" edge=\"1\" source=\"%s\" target=\"%s\" parent=\"1\">\n",
 			edgeID, xmlEscape(label), SanitizeID(e.Source), SanitizeID(e.Target))

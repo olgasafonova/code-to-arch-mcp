@@ -50,15 +50,14 @@ func Structurizr(graph *model.ArchGraph, opts Options) string {
 
 	// Relationships
 	for _, e := range vg.Edges {
-		label := e.Label
-		if label == "" {
-			label = string(e.Type)
+		label := EdgeLabel(e, vg.Names[e.Target])
+		if label != "" {
+			fmt.Fprintf(&sb, "        %s -> %s \"%s\"\n",
+				SanitizeID(e.Source), SanitizeID(e.Target), label)
+		} else {
+			fmt.Fprintf(&sb, "        %s -> %s\n",
+				SanitizeID(e.Source), SanitizeID(e.Target))
 		}
-		fmt.Fprintf(&sb, "        %s -> %s \"%s\"\n",
-			SanitizeID(e.Source),
-			SanitizeID(e.Target),
-			label,
-		)
 	}
 
 	sb.WriteString("    }\n") // end model

@@ -55,15 +55,9 @@ func C4(graph *model.ArchGraph, opts Options) string {
 
 	// Render relationships
 	for _, e := range vg.Edges {
-		label := e.Label
-		if label == "" {
-			label = string(e.Type)
-		}
+		label := EdgeLabel(e, vg.Names[e.Target])
 		fmt.Fprintf(&sb, "Rel(%s, %s, \"%s\")\n",
-			SanitizeID(e.Source),
-			SanitizeID(e.Target),
-			label,
-		)
+			SanitizeID(e.Source), SanitizeID(e.Target), label)
 	}
 
 	sb.WriteString("\n@enduml\n")

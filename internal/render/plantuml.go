@@ -40,17 +40,15 @@ func PlantUML(graph *model.ArchGraph, opts Options) string {
 
 	// Render edges between visible nodes
 	for _, e := range vg.Edges {
-		label := e.Label
-		if label == "" {
-			label = string(e.Type)
-		}
+		label := EdgeLabel(e, vg.Names[e.Target])
 		arrow := plantUMLArrow(e.Type)
-		fmt.Fprintf(&sb, "%s %s %s : %s\n",
-			SanitizeID(e.Source),
-			arrow,
-			SanitizeID(e.Target),
-			label,
-		)
+		if label != "" {
+			fmt.Fprintf(&sb, "%s %s %s : %s\n",
+				SanitizeID(e.Source), arrow, SanitizeID(e.Target), label)
+		} else {
+			fmt.Fprintf(&sb, "%s %s %s\n",
+				SanitizeID(e.Source), arrow, SanitizeID(e.Target))
+		}
 	}
 
 	sb.WriteString("\n@enduml\n")

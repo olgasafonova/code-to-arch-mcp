@@ -290,6 +290,55 @@ func TestTransitiveReduce_DeepChain(t *testing.T) {
 	}
 }
 
+func TestEdgeLabel(t *testing.T) {
+	tests := []struct {
+		label      string
+		edgeType   model.EdgeType
+		targetName string
+		want       string
+	}{
+		// Empty label → empty
+		{"", model.EdgeDependency, "utils", ""},
+		// Label matches edge type name → suppressed
+		{"dependency", model.EdgeDependency, "utils", ""},
+		// Label matches target node name → suppressed
+		{"utils", model.EdgeDependency, "utils", ""},
+		// Meaningful label → kept
+		{"queries", model.EdgeReadWrite, "PostgreSQL", "queries"},
+		// Label different from type and target → kept
+		{"HTTP", model.EdgeAPICall, "gateway", "HTTP"},
+	}
+	for _, tt := range tests {
+		e := &model.Edge{Type: tt.edgeType, Label: tt.label}
+		got := EdgeLabel(e, tt.targetName)
+		if got != tt.want {
+			t.Errorf("EdgeLabel(label=%q, type=%q, target=%q) = %q, want %q",
+				tt.label, tt.edgeType, tt.targetName, got, tt.want)
+		}
+	}
+}
+
+func TestMermaid_SuppressesRedundantLabels(t *testing.T) {
+	g := model.NewGraph("/tmp")
+	g.AddNode(&model.Node{ID: "svc:api", Name: "API", Type: model.NodeService})
+	g.AddNode(&model.Node{ID: "svc:db", Name: "DB", Type: model.NodeService})
+	g.AddEdge(&model.Edge{
+		Source: "svc:api", Target: "svc:db",
+		Type: model.EdgeDependency, Label: "dependency",
+	})
+
+	result := Mermaid(g, Options{ViewLevel: ViewContainer})
+
+	// "dependency" label should be suppressed (matches edge type)
+	if strings.Contains(result, "|dependency|") {
+		t.Error("expected 'dependency' label to be suppressed")
+	}
+	// Edge should still exist, just without label
+	if !strings.Contains(result, "-->") {
+		t.Error("expected edge arrow in output")
+	}
+}
+
 func TestSanitizeID(t *testing.T) {
 	tests := []struct {
 		input, expected string
