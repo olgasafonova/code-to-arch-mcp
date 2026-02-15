@@ -50,7 +50,8 @@ Pass a subdirectory path; returns the same format as arch_scan scoped to that su
 		Description: `Generate a diagram from a scanned architecture in the specified format.
 USE WHEN the user wants a visual representation of the architecture.
 Supports Mermaid, PlantUML, C4, Structurizr DSL, draw.io, Excalidraw, and JSON output.
-View levels: system (high-level), container (services + infra), component (all packages).`,
+View levels: system (high-level), container (services + infra), component (all packages).
+Optional theme_bg and theme_fg hex colors (e.g. "#ffffff", "#1e293b") derive a full Mermaid color palette from two colors. Works with Mermaid format only.`,
 		Category:   "diagram",
 		ReadOnly:   true,
 		Idempotent: true,

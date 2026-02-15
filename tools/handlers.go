@@ -234,6 +234,8 @@ type ArchGenerateArgs struct {
 	ViewLevel string `json:"view_level,omitempty"`
 	Title     string `json:"title,omitempty"`
 	Direction string `json:"direction,omitempty"`
+	ThemeBG   string `json:"theme_bg,omitempty"`
+	ThemeFG   string `json:"theme_fg,omitempty"`
 	ScanControl
 }
 
@@ -266,6 +268,9 @@ func (h *HandlerRegistry) archGenerate(ctx context.Context, args ArchGenerateArg
 	}
 	if args.Direction != "" {
 		opts.Direction = args.Direction
+	}
+	if args.ThemeBG != "" || args.ThemeFG != "" {
+		opts.Theme = render.Theme{BG: args.ThemeBG, FG: args.ThemeFG}
 	}
 
 	var diagram string

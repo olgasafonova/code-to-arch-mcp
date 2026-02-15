@@ -367,6 +367,82 @@ func TestMermaid_SuppressesRedundantLabels(t *testing.T) {
 	}
 }
 
+func TestMermaid_ThemeApplied(t *testing.T) {
+	g := model.NewGraph("/tmp")
+	g.AddNode(&model.Node{ID: "svc:api", Name: "API", Type: model.NodeService})
+
+	opts := Options{
+		ViewLevel: ViewContainer,
+		Theme:     Theme{BG: "#ffffff", FG: "#1e293b"},
+	}
+	result := Mermaid(g, opts)
+
+	if !strings.Contains(result, "%%{init:") {
+		t.Fatal("expected %%{init: theme directive in output")
+	}
+	if !strings.Contains(result, "'theme': 'base'") {
+		t.Fatal("expected base theme in init directive")
+	}
+	if !strings.Contains(result, "'primaryTextColor': '#1e293b'") {
+		t.Fatal("expected FG color as primaryTextColor")
+	}
+	if !strings.Contains(result, "'titleColor': '#1e293b'") {
+		t.Fatal("expected FG color as titleColor")
+	}
+}
+
+func TestMermaid_NoThemeWhenEmpty(t *testing.T) {
+	g := model.NewGraph("/tmp")
+	g.AddNode(&model.Node{ID: "svc:api", Name: "API", Type: model.NodeService})
+
+	result := Mermaid(g, DefaultOptions())
+
+	if strings.Contains(result, "%%{init:") {
+		t.Fatal("expected no theme directive when Theme is empty")
+	}
+}
+
+func TestParseHex(t *testing.T) {
+	tests := []struct {
+		input   string
+		r, g, b uint8
+		ok      bool
+	}{
+		{"#ffffff", 255, 255, 255, true},
+		{"#000000", 0, 0, 0, true},
+		{"#1e293b", 30, 41, 59, true},
+		{"fff", 255, 255, 255, true},  // shorthand without #
+		{"#abc", 170, 187, 204, true}, // shorthand with #
+		{"invalid", 0, 0, 0, false},
+		{"#gg0000", 0, 0, 0, false},
+	}
+	for _, tt := range tests {
+		r, g, b, ok := parseHex(tt.input)
+		if ok != tt.ok {
+			t.Errorf("parseHex(%q): ok=%v, want %v", tt.input, ok, tt.ok)
+			continue
+		}
+		if ok && (r != tt.r || g != tt.g || b != tt.b) {
+			t.Errorf("parseHex(%q) = (%d,%d,%d), want (%d,%d,%d)",
+				tt.input, r, g, b, tt.r, tt.g, tt.b)
+		}
+	}
+}
+
+func TestMermaidThemeInit_ColorMixing(t *testing.T) {
+	// White BG + black FG: 3% mix should be very close to white
+	result := mermaidThemeInit(Theme{BG: "#ffffff", FG: "#000000"})
+
+	// 3% of black into white = rgb(247,247,247) = #f7f7f7
+	if !strings.Contains(result, "#f7f7f7") {
+		t.Errorf("expected #f7f7f7 for 3%% black into white, got:\n%s", result)
+	}
+	// 30% of black into white = rgb(178,178,178) = #b2b2b2
+	if !strings.Contains(result, "#b2b2b2") {
+		t.Errorf("expected #b2b2b2 for 30%% black into white, got:\n%s", result)
+	}
+}
+
 func TestSanitizeID(t *testing.T) {
 	tests := []struct {
 		input, expected string

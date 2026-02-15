@@ -3,6 +3,7 @@ package render
 
 import (
 	"fmt"
+	"strconv"
 	"strings"
 
 	"github.com/olgasafonova/code-to-arch-mcp/internal/model"
@@ -30,12 +31,21 @@ const (
 	ViewComponent ViewLevel = "component" // Internal packages and modules
 )
 
+// Theme controls diagram colors. All colors are derived from BG (background)
+// and FG (foreground) using percentage mixing, inspired by beautiful-mermaid's
+// two-color derivation. If both BG and FG are empty, no theme is applied.
+type Theme struct {
+	BG string // Background hex color, e.g. "#ffffff"
+	FG string // Foreground hex color, e.g. "#1e293b"
+}
+
 // Options controls rendering behavior.
 type Options struct {
 	Format    Format
 	ViewLevel ViewLevel
 	Title     string
 	Direction string // TB, LR, RL, BT (Mermaid direction)
+	Theme     Theme  // Optional two-color theme for Mermaid output
 }
 
 // DefaultOptions returns sensible rendering defaults.
@@ -59,6 +69,11 @@ func Mermaid(graph *model.ArchGraph, opts Options) string {
 	title := opts.Title
 	if title == "" {
 		title = "Architecture"
+	}
+
+	// Inject theme frontmatter if colors are provided.
+	if themeInit := mermaidThemeInit(opts.Theme); themeInit != "" {
+		sb.WriteString(themeInit)
 	}
 
 	fmt.Fprintf(&sb, "---\ntitle: %s\n---\n", title)
@@ -131,4 +146,86 @@ func mermaidShape(t model.NodeType) shapeDelimiters {
 	default:
 		return shapeDelimiters{"[", "]"}
 	}
+}
+
+// mermaidThemeInit generates a %%{init: ...}%% directive that sets Mermaid's
+// base theme variables. Colors are derived from two inputs (BG and FG) using
+// linear interpolation at fixed percentages, inspired by beautiful-mermaid's
+// two-color derivation system.
+//
+// Derivation table:
+//   - primaryColor (node fill):      3% FG into BG
+//   - primaryTextColor:              FG at 100%
+//   - primaryBorderColor:            30% FG into BG
+//   - lineColor (connectors):        30% FG into BG
+//   - secondaryColor (alt nodes):    6% FG into BG
+//   - tertiaryColor (subgraph bg):   2% FG into BG
+//   - mainBkg:                       3% FG into BG
+//   - nodeBorder:                    30% FG into BG
+//   - clusterBkg:                    2% FG into BG
+//   - titleColor:                    FG at 100%
+func mermaidThemeInit(t Theme) string {
+	if t.BG == "" || t.FG == "" {
+		return ""
+	}
+
+	bgR, bgG, bgB, ok1 := parseHex(t.BG)
+	fgR, fgG, fgB, ok2 := parseHex(t.FG)
+	if !ok1 || !ok2 {
+		return ""
+	}
+
+	mix := func(pct float64) string {
+		r := uint8(float64(bgR) + pct*(float64(fgR)-float64(bgR)))
+		g := uint8(float64(bgG) + pct*(float64(fgG)-float64(bgG)))
+		b := uint8(float64(bgB) + pct*(float64(fgB)-float64(bgB)))
+		return fmt.Sprintf("#%02x%02x%02x", r, g, b)
+	}
+
+	return fmt.Sprintf(
+		"%%%%{init: {'theme': 'base', 'themeVariables': {"+
+			"'primaryColor': '%s', "+
+			"'primaryTextColor': '%s', "+
+			"'primaryBorderColor': '%s', "+
+			"'lineColor': '%s', "+
+			"'secondaryColor': '%s', "+
+			"'tertiaryColor': '%s', "+
+			"'mainBkg': '%s', "+
+			"'nodeBorder': '%s', "+
+			"'clusterBkg': '%s', "+
+			"'titleColor': '%s'"+
+			"}}}%%%%\n",
+		mix(0.03), // primaryColor
+		t.FG,      // primaryTextColor
+		mix(0.30), // primaryBorderColor
+		mix(0.30), // lineColor
+		mix(0.06), // secondaryColor
+		mix(0.02), // tertiaryColor
+		mix(0.03), // mainBkg
+		mix(0.30), // nodeBorder
+		mix(0.02), // clusterBkg
+		t.FG,      // titleColor
+	)
+}
+
+// parseHex parses a hex color string (#RGB, #RRGGBB) into r, g, b components.
+func parseHex(hex string) (r, g, b uint8, ok bool) {
+	hex = strings.TrimPrefix(hex, "#")
+	switch len(hex) {
+	case 3:
+		// Expand shorthand: #RGB → #RRGGBB
+		hex = string([]byte{hex[0], hex[0], hex[1], hex[1], hex[2], hex[2]})
+	case 6:
+		// Already full form
+	default:
+		return 0, 0, 0, false
+	}
+
+	rr, err1 := strconv.ParseUint(hex[0:2], 16, 8)
+	gg, err2 := strconv.ParseUint(hex[2:4], 16, 8)
+	bb, err3 := strconv.ParseUint(hex[4:6], 16, 8)
+	if err1 != nil || err2 != nil || err3 != nil {
+		return 0, 0, 0, false
+	}
+	return uint8(rr), uint8(gg), uint8(bb), true
 }
