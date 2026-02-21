@@ -1,0 +1,35 @@
+version: "2"
+
+run:
+  timeout: 5m
+
+linters:
+  default: none
+  enable:
+    - errcheck
+    - gosec
+    - govet
+    - ineffassign
+    - staticcheck
+    - unused
+  settings:
+    gosec:
+      excludes:
+        - G104  # Covered by errcheck
+        - G101  # False positives on URL constants and test fixtures
+        - G115  # Integer overflow: bounded by constants
+        - G204  # Subprocess with variable args (controlled internally)
+        - G301  # Directory creation with intended permissions
+        - G304  # File paths from config/env, not user input
+        - G306  # WriteFile 0644 is intentional for generated output
+  exclusions:
+    generated: lax
+    presets:
+      - comments
+      - std-error-handling
+    rules:
+      - path: _test\.go
+        linters:
+          - gosec
+    paths:
+      - vendor
