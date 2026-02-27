@@ -51,7 +51,8 @@ Pass a subdirectory path; returns the same format as arch_scan scoped to that su
 USE WHEN the user wants a visual representation of the architecture.
 Supports Mermaid, PlantUML, C4, Structurizr DSL, draw.io, Excalidraw, and JSON output.
 View levels: system (high-level), container (services + infra), component (all packages).
-Optional theme_bg and theme_fg hex colors (e.g. "#ffffff", "#1e293b") derive a full Mermaid color palette from two colors. Works with Mermaid format only.`,
+Optional theme_bg and theme_fg hex colors (e.g. "#ffffff", "#1e293b") derive a full Mermaid color palette from two colors. Works with Mermaid format only.
+Set prune_threshold (0.0-1.0) to remove ubiquitous nodes like logging or fmt that clutter diagrams. A value of 0.5 removes nodes targeted by more than 50% of source nodes.`,
 		Category:   "diagram",
 		ReadOnly:   true,
 		Idempotent: true,

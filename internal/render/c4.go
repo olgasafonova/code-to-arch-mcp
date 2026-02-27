@@ -16,7 +16,7 @@ func C4(graph *model.ArchGraph, opts Options) string {
 		title = "Architecture"
 	}
 
-	vg := FilterGraph(graph, opts.ViewLevel)
+	vg := PrepareGraph(graph, opts)
 	vg.TransitiveReduce()
 
 	sb.WriteString("@startuml\n")

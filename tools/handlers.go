@@ -229,21 +229,23 @@ func (h *HandlerRegistry) archFocus(ctx context.Context, args ArchFocusArgs) (*A
 
 // ArchGenerateArgs are the arguments for arch_generate.
 type ArchGenerateArgs struct {
-	Path      string `json:"path"`
-	Format    string `json:"format,omitempty"`
-	ViewLevel string `json:"view_level,omitempty"`
-	Title     string `json:"title,omitempty"`
-	Direction string `json:"direction,omitempty"`
-	ThemeBG   string `json:"theme_bg,omitempty"`
-	ThemeFG   string `json:"theme_fg,omitempty"`
+	Path           string  `json:"path"`
+	Format         string  `json:"format,omitempty"`
+	ViewLevel      string  `json:"view_level,omitempty"`
+	Title          string  `json:"title,omitempty"`
+	Direction      string  `json:"direction,omitempty"`
+	ThemeBG        string  `json:"theme_bg,omitempty"`
+	ThemeFG        string  `json:"theme_fg,omitempty"`
+	PruneThreshold float64 `json:"prune_threshold,omitempty"`
 	ScanControl
 }
 
 // ArchGenerateResult is the result of arch_generate.
 type ArchGenerateResult struct {
-	Format  string `json:"format"`
-	Diagram string `json:"diagram"`
-	Summary string `json:"summary"`
+	Format      string   `json:"format"`
+	Diagram     string   `json:"diagram"`
+	Summary     string   `json:"summary"`
+	PrunedNodes []string `json:"pruned_nodes,omitempty"`
 }
 
 func (h *HandlerRegistry) archGenerate(ctx context.Context, args ArchGenerateArgs) (*ArchGenerateResult, error) {
@@ -272,6 +274,9 @@ func (h *HandlerRegistry) archGenerate(ctx context.Context, args ArchGenerateArg
 	if args.ThemeBG != "" || args.ThemeFG != "" {
 		opts.Theme = render.Theme{BG: args.ThemeBG, FG: args.ThemeFG}
 	}
+	if args.PruneThreshold > 0 {
+		opts.PruneThreshold = args.PruneThreshold
+	}
 
 	var diagram string
 	switch opts.Format {
@@ -293,10 +298,18 @@ func (h *HandlerRegistry) archGenerate(ctx context.Context, args ArchGenerateArg
 		return nil, fmt.Errorf("unsupported format: %s (supported: mermaid, plantuml, c4, structurizr, json, drawio, excalidraw)", args.Format)
 	}
 
+	// Report which nodes were pruned (if any).
+	var prunedNodes []string
+	if opts.PruneThreshold > 0 {
+		vg := render.PrepareGraph(graph, opts)
+		prunedNodes = vg.PrunedNodes
+	}
+
 	return &ArchGenerateResult{
-		Format:  string(opts.Format),
-		Diagram: diagram,
-		Summary: graph.Summary(),
+		Format:      string(opts.Format),
+		Diagram:     diagram,
+		Summary:     graph.Summary(),
+		PrunedNodes: prunedNodes,
 	}, nil
 }
 

@@ -23,7 +23,7 @@ func JSON(graph *model.ArchGraph, opts Options) string {
 		title = "Architecture"
 	}
 
-	vg := FilterGraph(graph, opts.ViewLevel)
+	vg := PrepareGraph(graph, opts)
 
 	out := jsonOutput{
 		Title:     title,

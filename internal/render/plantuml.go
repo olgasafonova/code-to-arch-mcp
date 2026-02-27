@@ -25,7 +25,7 @@ func PlantUML(graph *model.ArchGraph, opts Options) string {
 
 	sb.WriteString("\n")
 
-	vg := FilterGraph(graph, opts.ViewLevel)
+	vg := PrepareGraph(graph, opts)
 	vg.TransitiveReduce()
 
 	// Render nodes grouped by type

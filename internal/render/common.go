@@ -32,10 +32,11 @@ func FilterNodesByViewLevel(nodes []*model.Node, level ViewLevel) []*model.Node 
 
 // VisibleGraph holds filtered nodes and edges for rendering.
 type VisibleGraph struct {
-	Nodes []*model.Node
-	Edges []*model.Edge
-	IDs   map[string]bool
-	Names map[string]string // node ID → display name
+	Nodes       []*model.Node
+	Edges       []*model.Edge
+	IDs         map[string]bool
+	Names       map[string]string // node ID → display name
+	PrunedNodes []string          // names of nodes removed by super-node pruning
 }
 
 // FilterGraph returns nodes and edges visible at the given view level.
@@ -193,6 +194,84 @@ func EdgeLabel(e *model.Edge, targetName string) string {
 		return ""
 	}
 	return label
+}
+
+// PruneSuperNodes removes nodes whose fan-in ratio exceeds the threshold.
+// Fan-in ratio = (unique sources targeting this node) / (total unique source nodes).
+// Returns the names of pruned nodes.
+func PruneSuperNodes(vg *VisibleGraph, threshold float64) []string {
+	if threshold <= 0 || len(vg.Edges) == 0 {
+		return nil
+	}
+
+	// Count unique source nodes across all edges.
+	sources := make(map[string]bool)
+	for _, e := range vg.Edges {
+		sources[e.Source] = true
+	}
+	totalSources := len(sources)
+	if totalSources == 0 {
+		return nil
+	}
+
+	// Count unique sources per target (fan-in).
+	fanIn := make(map[string]map[string]bool)
+	for _, e := range vg.Edges {
+		if fanIn[e.Target] == nil {
+			fanIn[e.Target] = make(map[string]bool)
+		}
+		fanIn[e.Target][e.Source] = true
+	}
+
+	// Identify super-nodes.
+	pruneSet := make(map[string]bool)
+	var prunedNames []string
+	for nodeID, srcSet := range fanIn {
+		ratio := float64(len(srcSet)) / float64(totalSources)
+		if ratio > threshold {
+			pruneSet[nodeID] = true
+		}
+	}
+
+	if len(pruneSet) == 0 {
+		return nil
+	}
+
+	// Collect pruned names and rebuild node/edge slices.
+	nameOf := make(map[string]string, len(vg.Nodes))
+	for _, n := range vg.Nodes {
+		nameOf[n.ID] = n.Name
+	}
+	for id := range pruneSet {
+		prunedNames = append(prunedNames, nameOf[id])
+		delete(vg.IDs, id)
+	}
+
+	filtered := vg.Nodes[:0]
+	for _, n := range vg.Nodes {
+		if !pruneSet[n.ID] {
+			filtered = append(filtered, n)
+		}
+	}
+	vg.Nodes = filtered
+
+	filteredEdges := vg.Edges[:0]
+	for _, e := range vg.Edges {
+		if !pruneSet[e.Source] && !pruneSet[e.Target] {
+			filteredEdges = append(filteredEdges, e)
+		}
+	}
+	vg.Edges = filteredEdges
+	vg.PrunedNodes = prunedNames
+
+	return prunedNames
+}
+
+// PrepareGraph applies view-level filtering and optional super-node pruning.
+func PrepareGraph(graph *model.ArchGraph, opts Options) *VisibleGraph {
+	vg := FilterGraph(graph, opts.ViewLevel)
+	PruneSuperNodes(vg, opts.PruneThreshold)
+	return vg
 }
 
 // SanitizeID replaces characters that are invalid in diagram node IDs.

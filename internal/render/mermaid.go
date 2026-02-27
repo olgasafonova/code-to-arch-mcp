@@ -41,11 +41,12 @@ type Theme struct {
 
 // Options controls rendering behavior.
 type Options struct {
-	Format    Format
-	ViewLevel ViewLevel
-	Title     string
-	Direction string // TB, LR, RL, BT (Mermaid direction)
-	Theme     Theme  // Optional two-color theme for Mermaid output
+	Format         Format
+	ViewLevel      ViewLevel
+	Title          string
+	Direction      string  // TB, LR, RL, BT (Mermaid direction)
+	Theme          Theme   // Optional two-color theme for Mermaid output
+	PruneThreshold float64 // 0 = disabled; 0.5 = prune nodes with fan-in > 50% of sources
 }
 
 // DefaultOptions returns sensible rendering defaults.
@@ -79,7 +80,7 @@ func Mermaid(graph *model.ArchGraph, opts Options) string {
 	fmt.Fprintf(&sb, "---\ntitle: %s\n---\n", title)
 	fmt.Fprintf(&sb, "graph %s\n", direction)
 
-	vg := FilterGraph(graph, opts.ViewLevel)
+	vg := PrepareGraph(graph, opts)
 	vg.TransitiveReduce()
 
 	// Render nodes grouped by type
