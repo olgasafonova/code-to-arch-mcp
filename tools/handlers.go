@@ -20,6 +20,7 @@ import (
 	"github.com/olgasafonova/code-to-arch-mcp/internal/drift"
 	"github.com/olgasafonova/code-to-arch-mcp/internal/infra"
 	"github.com/olgasafonova/code-to-arch-mcp/internal/model"
+	"github.com/olgasafonova/code-to-arch-mcp/internal/registry"
 	"github.com/olgasafonova/code-to-arch-mcp/internal/render"
 	"github.com/olgasafonova/code-to-arch-mcp/internal/safepath"
 	"github.com/olgasafonova/code-to-arch-mcp/internal/scanner"
@@ -27,9 +28,10 @@ import (
 
 // HandlerRegistry holds the state and dependencies for all tool handlers.
 type HandlerRegistry struct {
-	scanner *scanner.Scanner
-	cache   *infra.Cache[*scanner.ScanResult]
-	logger  *slog.Logger
+	scanner      *scanner.Scanner
+	cache        *infra.Cache[*scanner.ScanResult]
+	repoRegistry *registry.Registry
+	logger       *slog.Logger
 }
 
 // NewHandlerRegistry creates a registry with all dependencies wired.
@@ -39,10 +41,17 @@ func NewHandlerRegistry(logger *slog.Logger) *HandlerRegistry {
 	pyAnalyzer := python.New()
 	s := scanner.New(logger, goAnalyzer, tsAnalyzer, pyAnalyzer)
 
+	reg, err := registry.Load()
+	if err != nil {
+		logger.Warn("Failed to load repo registry, starting empty", "error", err)
+		reg = nil
+	}
+
 	return &HandlerRegistry{
-		scanner: s,
-		cache:   infra.NewCache[*scanner.ScanResult](5*time.Minute, 10),
-		logger:  logger,
+		scanner:      s,
+		cache:        infra.NewCache[*scanner.ScanResult](5*time.Minute, 10),
+		repoRegistry: reg,
+		logger:       logger,
 	}
 }
 
@@ -78,6 +87,12 @@ func (h *HandlerRegistry) RegisterAll(server *mcp.Server) {
 			register(h, server, spec, h.archExplain)
 		case "ArchRecommend":
 			register(h, server, spec, h.archRecommend)
+		case "ArchRegistryAdd":
+			register(h, server, spec, h.archRegistryAdd)
+		case "ArchRegistryRemove":
+			register(h, server, spec, h.archRegistryRemove)
+		case "ArchRegistryList":
+			register(h, server, spec, h.archRegistryList)
 		}
 	}
 }
@@ -122,9 +137,29 @@ func (sc ScanControl) toScanOptions() scanner.ScanOptions {
 	return opts
 }
 
+// resolveRepoPath resolves a path from either an explicit path or a registry alias.
+// Path takes precedence over repo. Returns the resolved path, alias (empty for ad-hoc), and error.
+func (h *HandlerRegistry) resolveRepoPath(path, repo string) (string, string, error) {
+	if path != "" {
+		return path, "", nil
+	}
+	if repo == "" {
+		return "", "", fmt.Errorf("either path or repo is required")
+	}
+	if h.repoRegistry == nil {
+		return "", "", fmt.Errorf("repo registry not available")
+	}
+	entry, err := h.repoRegistry.Get(repo)
+	if err != nil {
+		return "", "", err
+	}
+	return entry.Path, repo, nil
+}
+
 // cachedScan checks the cache before running a full scan.
+// When alias is non-empty, loads/saves incremental scan state and updates registry metadata.
 // Returns the result even on ErrLimitReached (partial result).
-func (h *HandlerRegistry) cachedScan(ctx context.Context, path string, opts scanner.ScanOptions) (*scanner.ScanResult, error) {
+func (h *HandlerRegistry) cachedScan(ctx context.Context, path, alias string, opts scanner.ScanOptions) (*scanner.ScanResult, error) {
 	absPath, err := filepath.Abs(path)
 	if err != nil {
 		absPath = path
@@ -142,19 +177,45 @@ func (h *HandlerRegistry) cachedScan(ctx context.Context, path string, opts scan
 		return cached, nil
 	}
 
+	// Load persistent scan state when scanning via registry alias.
+	if alias != "" && h.repoRegistry != nil {
+		statePath := h.repoRegistry.StatePath(alias)
+		state, loadErr := infra.LoadJSON[scanner.ScanState](statePath)
+		if loadErr != nil {
+			if !os.IsNotExist(loadErr) {
+				h.logger.Warn("Failed to load scan state, starting fresh", "alias", alias, "error", loadErr)
+			}
+			state = scanner.NewScanState(absPath)
+		}
+		opts.State = state
+	}
+
 	result, err := h.scanner.ScanWithOptions(ctx, path, opts)
 	if err != nil && !errors.Is(err, scanner.ErrLimitReached) {
 		return nil, err
 	}
 
 	h.cache.Put(key, result)
+
+	// Persist state and update registry when scanning via alias.
+	if alias != "" && h.repoRegistry != nil && result.State != nil {
+		statePath := h.repoRegistry.StatePath(alias)
+		if saveErr := infra.SaveJSON(statePath, result.State); saveErr != nil {
+			h.logger.Warn("Failed to save scan state", "alias", alias, "error", saveErr)
+		}
+		h.repoRegistry.UpdateScanInfo(alias, result.Graph.NodeCount(), result.Graph.EdgeCount(), string(result.Graph.Topology))
+		if saveErr := h.repoRegistry.Save(); saveErr != nil {
+			h.logger.Warn("Failed to save registry", "error", saveErr)
+		}
+	}
+
 	return result, err
 }
 
 // scanPath runs a cached scan and unwraps the graph.
 // Returns the graph even on ErrLimitReached (partial result).
-func (h *HandlerRegistry) scanPath(ctx context.Context, path string, sc ScanControl) (*model.ArchGraph, bool, error) {
-	result, err := h.cachedScan(ctx, path, sc.toScanOptions())
+func (h *HandlerRegistry) scanPath(ctx context.Context, path, alias string, sc ScanControl) (*model.ArchGraph, bool, error) {
+	result, err := h.cachedScan(ctx, path, alias, sc.toScanOptions())
 	if err != nil && !errors.Is(err, scanner.ErrLimitReached) {
 		return nil, false, err
 	}
@@ -168,6 +229,7 @@ func (h *HandlerRegistry) scanPath(ctx context.Context, path string, sc ScanCont
 // ArchScanArgs are the arguments for arch_scan.
 type ArchScanArgs struct {
 	Path   string `json:"path"`
+	Repo   string `json:"repo,omitempty"`
 	Detail string `json:"detail,omitempty"` // "summary" (default) or "full"
 	ScanControl
 }
@@ -186,18 +248,22 @@ type ArchScanResult struct {
 }
 
 func (h *HandlerRegistry) archScan(ctx context.Context, args ArchScanArgs) (*ArchScanResult, error) {
-	if err := safepath.ValidateScanPath(args.Path); err != nil {
+	path, alias, err := h.resolveRepoPath(args.Path, args.Repo)
+	if err != nil {
+		return nil, err
+	}
+	if err := safepath.ValidateScanPath(path); err != nil {
 		return nil, err
 	}
 
-	result, err := h.cachedScan(ctx, args.Path, args.toScanOptions())
+	result, err := h.cachedScan(ctx, path, alias, args.toScanOptions())
 	if err != nil && !errors.Is(err, scanner.ErrLimitReached) {
 		return nil, fmt.Errorf("scanning codebase: %w", err)
 	}
 	graph := result.Graph
 
 	// Detect topology from project structure
-	boundaries, bErr := detector.DetectBoundaries(args.Path)
+	boundaries, bErr := detector.DetectBoundaries(path)
 	if bErr == nil {
 		graph.Topology = boundaries.Topology
 	}
@@ -224,16 +290,18 @@ func (h *HandlerRegistry) archScan(ctx context.Context, args ArchScanArgs) (*Arc
 // ArchFocusArgs are the arguments for arch_focus.
 type ArchFocusArgs struct {
 	Path string `json:"path"`
+	Repo string `json:"repo,omitempty"`
 	ScanControl
 }
 
 func (h *HandlerRegistry) archFocus(ctx context.Context, args ArchFocusArgs) (*ArchScanResult, error) {
-	return h.archScan(ctx, ArchScanArgs{Path: args.Path, ScanControl: args.ScanControl})
+	return h.archScan(ctx, ArchScanArgs{Path: args.Path, Repo: args.Repo, ScanControl: args.ScanControl})
 }
 
 // ArchGenerateArgs are the arguments for arch_generate.
 type ArchGenerateArgs struct {
 	Path           string  `json:"path"`
+	Repo           string  `json:"repo,omitempty"`
 	Format         string  `json:"format,omitempty"`
 	ViewLevel      string  `json:"view_level,omitempty"`
 	Title          string  `json:"title,omitempty"`
@@ -253,11 +321,15 @@ type ArchGenerateResult struct {
 }
 
 func (h *HandlerRegistry) archGenerate(ctx context.Context, args ArchGenerateArgs) (*ArchGenerateResult, error) {
-	if err := safepath.ValidateScanPath(args.Path); err != nil {
+	path, alias, err := h.resolveRepoPath(args.Path, args.Repo)
+	if err != nil {
+		return nil, err
+	}
+	if err := safepath.ValidateScanPath(path); err != nil {
 		return nil, err
 	}
 
-	graph, _, err := h.scanPath(ctx, args.Path, args.ScanControl)
+	graph, _, err := h.scanPath(ctx, path, alias, args.ScanControl)
 	if err != nil {
 		return nil, fmt.Errorf("scanning codebase: %w", err)
 	}
@@ -320,6 +392,7 @@ func (h *HandlerRegistry) archGenerate(ctx context.Context, args ArchGenerateArg
 // ArchDependenciesArgs are the arguments for arch_dependencies.
 type ArchDependenciesArgs struct {
 	Path string `json:"path"`
+	Repo string `json:"repo,omitempty"`
 	ScanControl
 }
 
@@ -331,16 +404,20 @@ type ArchDependenciesResult struct {
 }
 
 func (h *HandlerRegistry) archDependencies(ctx context.Context, args ArchDependenciesArgs) (*ArchDependenciesResult, error) {
-	if err := safepath.ValidateScanPath(args.Path); err != nil {
+	path, alias, err := h.resolveRepoPath(args.Path, args.Repo)
+	if err != nil {
+		return nil, err
+	}
+	if err := safepath.ValidateScanPath(path); err != nil {
 		return nil, err
 	}
 
-	graph, _, err := h.scanPath(ctx, args.Path, args.ScanControl)
+	graph, _, err := h.scanPath(ctx, path, alias, args.ScanControl)
 	if err != nil {
 		return nil, fmt.Errorf("scanning codebase: %w", err)
 	}
 
-	modulePath := readModulePath(args.Path)
+	modulePath := readModulePath(path)
 
 	var internal, external, infra []string
 	seen := make(map[string]bool)
@@ -429,6 +506,7 @@ func isStdlib(importPath, modulePath string) bool {
 
 type ArchDataflowArgs struct {
 	Path string `json:"path"`
+	Repo string `json:"repo,omitempty"`
 	ScanControl
 }
 
@@ -440,11 +518,15 @@ type ArchDataflowResult struct {
 }
 
 func (h *HandlerRegistry) archDataflow(ctx context.Context, args ArchDataflowArgs) (*ArchDataflowResult, error) {
-	if err := safepath.ValidateScanPath(args.Path); err != nil {
+	path, alias, err := h.resolveRepoPath(args.Path, args.Repo)
+	if err != nil {
+		return nil, err
+	}
+	if err := safepath.ValidateScanPath(path); err != nil {
 		return nil, err
 	}
 
-	graph, _, err := h.scanPath(ctx, args.Path, args.ScanControl)
+	graph, _, err := h.scanPath(ctx, path, alias, args.ScanControl)
 	if err != nil {
 		return nil, fmt.Errorf("scanning codebase: %w", err)
 	}
@@ -478,6 +560,7 @@ func (h *HandlerRegistry) archDataflow(ctx context.Context, args ArchDataflowArg
 
 type ArchBoundariesArgs struct {
 	Path string `json:"path"`
+	Repo string `json:"repo,omitempty"`
 }
 
 type BoundaryInfo struct {
@@ -494,11 +577,15 @@ type ArchBoundariesResult struct {
 }
 
 func (h *HandlerRegistry) archBoundaries(_ context.Context, args ArchBoundariesArgs) (*ArchBoundariesResult, error) {
-	if err := safepath.ValidateScanPath(args.Path); err != nil {
+	path, _, err := h.resolveRepoPath(args.Path, args.Repo)
+	if err != nil {
+		return nil, err
+	}
+	if err := safepath.ValidateScanPath(path); err != nil {
 		return nil, err
 	}
 
-	result, err := detector.DetectBoundaries(args.Path)
+	result, err := detector.DetectBoundaries(path)
 	if err != nil {
 		return nil, fmt.Errorf("detecting boundaries: %w", err)
 	}
@@ -526,17 +613,22 @@ func (h *HandlerRegistry) archBoundaries(_ context.Context, args ArchBoundariesA
 
 type ArchDiffArgs struct {
 	Path         string `json:"path"`
+	Repo         string `json:"repo,omitempty"`
 	SnapshotFile string `json:"snapshot_file"`
 }
 
 func (h *HandlerRegistry) archDiff(ctx context.Context, args ArchDiffArgs) (*model.DiffReport, error) {
-	if err := safepath.ValidateScanPath(args.Path); err != nil {
+	path, alias, err := h.resolveRepoPath(args.Path, args.Repo)
+	if err != nil {
+		return nil, err
+	}
+	if err := safepath.ValidateScanPath(path); err != nil {
 		return nil, err
 	}
 	if args.SnapshotFile == "" {
 		return nil, fmt.Errorf("snapshot_file is required")
 	}
-	if err := safepath.ValidateOutputPath(args.SnapshotFile, args.Path); err != nil {
+	if err := safepath.ValidateOutputPath(args.SnapshotFile, path); err != nil {
 		return nil, fmt.Errorf("invalid snapshot file path: %w", err)
 	}
 
@@ -548,7 +640,7 @@ func (h *HandlerRegistry) archDiff(ctx context.Context, args ArchDiffArgs) (*mod
 	baseline := snapshot.ToGraph()
 
 	// Scan current codebase
-	result, scanErr := h.cachedScan(ctx, args.Path, scanner.DefaultScanOptions())
+	result, scanErr := h.cachedScan(ctx, path, alias, scanner.DefaultScanOptions())
 	if scanErr != nil && !errors.Is(scanErr, scanner.ErrLimitReached) {
 		return nil, fmt.Errorf("scanning current codebase: %w", scanErr)
 	}
@@ -561,12 +653,17 @@ func (h *HandlerRegistry) archDiff(ctx context.Context, args ArchDiffArgs) (*mod
 
 type ArchDriftArgs struct {
 	Path    string `json:"path"`
+	Repo    string `json:"repo,omitempty"`
 	BaseRef string `json:"base_ref"`
 	HeadRef string `json:"head_ref,omitempty"`
 }
 
 func (h *HandlerRegistry) archDrift(ctx context.Context, args ArchDriftArgs) (*model.DiffReport, error) {
-	if err := safepath.ValidateScanPath(args.Path); err != nil {
+	path, _, err := h.resolveRepoPath(args.Path, args.Repo)
+	if err != nil {
+		return nil, err
+	}
+	if err := safepath.ValidateScanPath(path); err != nil {
 		return nil, err
 	}
 	if args.BaseRef == "" {
@@ -578,7 +675,7 @@ func (h *HandlerRegistry) archDrift(ctx context.Context, args ArchDriftArgs) (*m
 	}
 
 	// Checkout and scan base ref
-	basePath, baseCleanup, err := drift.CheckoutRef(ctx, args.Path, args.BaseRef)
+	basePath, baseCleanup, err := drift.CheckoutRef(ctx, path, args.BaseRef)
 	if err != nil {
 		return nil, fmt.Errorf("checking out base ref %s: %w", args.BaseRef, err)
 	}
@@ -590,7 +687,7 @@ func (h *HandlerRegistry) archDrift(ctx context.Context, args ArchDriftArgs) (*m
 	}
 
 	// Checkout and scan head ref
-	headPath, headCleanup, err := drift.CheckoutRef(ctx, args.Path, headRef)
+	headPath, headCleanup, err := drift.CheckoutRef(ctx, path, headRef)
 	if err != nil {
 		return nil, fmt.Errorf("checking out head ref %s: %w", headRef, err)
 	}
@@ -609,6 +706,7 @@ func (h *HandlerRegistry) archDrift(ctx context.Context, args ArchDriftArgs) (*m
 
 type ArchValidateArgs struct {
 	Path string `json:"path"`
+	Repo string `json:"repo,omitempty"`
 	ScanControl
 }
 
@@ -619,18 +717,22 @@ type ArchValidateResult struct {
 }
 
 func (h *HandlerRegistry) archValidate(ctx context.Context, args ArchValidateArgs) (*ArchValidateResult, error) {
-	if err := safepath.ValidateScanPath(args.Path); err != nil {
+	path, alias, err := h.resolveRepoPath(args.Path, args.Repo)
+	if err != nil {
+		return nil, err
+	}
+	if err := safepath.ValidateScanPath(path); err != nil {
 		return nil, err
 	}
 
-	graph, _, err := h.scanPath(ctx, args.Path, args.ScanControl)
+	graph, _, err := h.scanPath(ctx, path, alias, args.ScanControl)
 	if err != nil {
 		return nil, fmt.Errorf("scanning codebase: %w", err)
 	}
 
 	// Load custom rules if .arch-rules.yaml exists in the project
 	var customRules *detector.RulesConfig
-	rulesPath := filepath.Join(args.Path, ".arch-rules.yaml")
+	rulesPath := filepath.Join(path, ".arch-rules.yaml")
 	if _, err := os.Stat(rulesPath); err == nil {
 		customRules, err = detector.LoadRules(rulesPath)
 		if err != nil {
@@ -653,6 +755,7 @@ func (h *HandlerRegistry) archValidate(ctx context.Context, args ArchValidateArg
 
 type ArchHistoryArgs struct {
 	Path  string `json:"path"`
+	Repo  string `json:"repo,omitempty"`
 	Limit int    `json:"limit,omitempty"`
 }
 
@@ -668,7 +771,11 @@ type scanResult struct {
 }
 
 func (h *HandlerRegistry) archHistory(ctx context.Context, args ArchHistoryArgs) (*ArchHistoryResult, error) {
-	if err := safepath.ValidateScanPath(args.Path); err != nil {
+	path, _, err := h.resolveRepoPath(args.Path, args.Repo)
+	if err != nil {
+		return nil, err
+	}
+	if err := safepath.ValidateScanPath(path); err != nil {
 		return nil, err
 	}
 	limit := args.Limit
@@ -676,7 +783,7 @@ func (h *HandlerRegistry) archHistory(ctx context.Context, args ArchHistoryArgs)
 		limit = 10
 	}
 
-	commits, err := drift.GetSignificantCommits(ctx, args.Path, limit)
+	commits, err := drift.GetSignificantCommits(ctx, path, limit)
 	if err != nil {
 		return nil, fmt.Errorf("getting git history: %w", err)
 	}
@@ -693,7 +800,7 @@ func (h *HandlerRegistry) archHistory(ctx context.Context, args ArchHistoryArgs)
 			Message: c.Message,
 		}
 		g.Go(func() error {
-			worktree, cleanup, wErr := drift.CheckoutRef(gctx, args.Path, c.Hash)
+			worktree, cleanup, wErr := drift.CheckoutRef(gctx, path, c.Hash)
 			if wErr != nil {
 				return nil // non-fatal: entry stays with zero counts
 			}
@@ -741,6 +848,7 @@ func (h *HandlerRegistry) archHistory(ctx context.Context, args ArchHistoryArgs)
 
 type ArchSnapshotArgs struct {
 	Path       string `json:"path"`
+	Repo       string `json:"repo,omitempty"`
 	OutputFile string `json:"output_file,omitempty"`
 	Label      string `json:"label,omitempty"`
 	ScanControl
@@ -754,20 +862,24 @@ type ArchSnapshotResult struct {
 }
 
 func (h *HandlerRegistry) archSnapshot(ctx context.Context, args ArchSnapshotArgs) (*ArchSnapshotResult, error) {
-	if err := safepath.ValidateScanPath(args.Path); err != nil {
+	path, alias, err := h.resolveRepoPath(args.Path, args.Repo)
+	if err != nil {
+		return nil, err
+	}
+	if err := safepath.ValidateScanPath(path); err != nil {
 		return nil, err
 	}
 
-	graph, _, err := h.scanPath(ctx, args.Path, args.ScanControl)
+	graph, _, err := h.scanPath(ctx, path, alias, args.ScanControl)
 	if err != nil {
 		return nil, fmt.Errorf("scanning codebase: %w", err)
 	}
 
 	outFile := args.OutputFile
 	if outFile == "" {
-		outFile = filepath.Join(args.Path, "architecture.snapshot.json")
+		outFile = filepath.Join(path, "architecture.snapshot.json")
 	}
-	if err := safepath.ValidateOutputPath(outFile, args.Path); err != nil {
+	if err := safepath.ValidateOutputPath(outFile, path); err != nil {
 		return nil, fmt.Errorf("invalid output file path: %w", err)
 	}
 
@@ -786,6 +898,7 @@ func (h *HandlerRegistry) archSnapshot(ctx context.Context, args ArchSnapshotArg
 
 type ArchMetricsArgs struct {
 	Path string `json:"path"`
+	Repo string `json:"repo,omitempty"`
 	ScanControl
 }
 
@@ -795,11 +908,15 @@ type ArchMetricsResult struct {
 }
 
 func (h *HandlerRegistry) archMetrics(ctx context.Context, args ArchMetricsArgs) (*ArchMetricsResult, error) {
-	if err := safepath.ValidateScanPath(args.Path); err != nil {
+	path, alias, err := h.resolveRepoPath(args.Path, args.Repo)
+	if err != nil {
+		return nil, err
+	}
+	if err := safepath.ValidateScanPath(path); err != nil {
 		return nil, err
 	}
 
-	graph, _, err := h.scanPath(ctx, args.Path, args.ScanControl)
+	graph, _, err := h.scanPath(ctx, path, alias, args.ScanControl)
 	if err != nil {
 		return nil, fmt.Errorf("scanning codebase: %w", err)
 	}
@@ -815,6 +932,7 @@ func (h *HandlerRegistry) archMetrics(ctx context.Context, args ArchMetricsArgs)
 
 type ArchExplainArgs struct {
 	Path     string `json:"path"`
+	Repo     string `json:"repo,omitempty"`
 	Question string `json:"question,omitempty"`
 	ScanControl
 }
@@ -825,16 +943,20 @@ type ArchExplainResult struct {
 }
 
 func (h *HandlerRegistry) archExplain(ctx context.Context, args ArchExplainArgs) (*ArchExplainResult, error) {
-	if err := safepath.ValidateScanPath(args.Path); err != nil {
+	path, alias, err := h.resolveRepoPath(args.Path, args.Repo)
+	if err != nil {
+		return nil, err
+	}
+	if err := safepath.ValidateScanPath(path); err != nil {
 		return nil, err
 	}
 
-	graph, _, err := h.scanPath(ctx, args.Path, args.ScanControl)
+	graph, _, err := h.scanPath(ctx, path, alias, args.ScanControl)
 	if err != nil {
 		return nil, fmt.Errorf("scanning codebase: %w", err)
 	}
 
-	boundaries, _ := detector.DetectBoundaries(args.Path)
+	boundaries, _ := detector.DetectBoundaries(path)
 	explanation := detector.ExplainArchitecture(graph, boundaries)
 
 	// Build evidence from patterns, decisions, and risks
@@ -858,6 +980,7 @@ func (h *HandlerRegistry) archExplain(ctx context.Context, args ArchExplainArgs)
 
 type ArchRecommendArgs struct {
 	Path  string `json:"path"`
+	Repo  string `json:"repo,omitempty"`
 	Focus string `json:"focus,omitempty"` // filter by recommendation category
 	ScanControl
 }
@@ -869,18 +992,22 @@ type ArchRecommendResult struct {
 }
 
 func (h *HandlerRegistry) archRecommend(ctx context.Context, args ArchRecommendArgs) (*ArchRecommendResult, error) {
-	if err := safepath.ValidateScanPath(args.Path); err != nil {
+	path, alias, err := h.resolveRepoPath(args.Path, args.Repo)
+	if err != nil {
+		return nil, err
+	}
+	if err := safepath.ValidateScanPath(path); err != nil {
 		return nil, err
 	}
 
-	graph, _, err := h.scanPath(ctx, args.Path, args.ScanControl)
+	graph, _, err := h.scanPath(ctx, path, alias, args.ScanControl)
 	if err != nil {
 		return nil, fmt.Errorf("scanning codebase: %w", err)
 	}
 
 	// Load custom rules if present.
 	var customRules *detector.RulesConfig
-	rulesPath := filepath.Join(args.Path, ".arch-rules.yaml")
+	rulesPath := filepath.Join(path, ".arch-rules.yaml")
 	if _, statErr := os.Stat(rulesPath); statErr == nil {
 		customRules, _ = detector.LoadRules(rulesPath)
 	}
@@ -909,8 +1036,111 @@ func (h *HandlerRegistry) archRecommend(ctx context.Context, args ArchRecommendA
 
 	return &ArchRecommendResult{
 		Recommendations: recs,
-		Summary:         fmt.Sprintf("Generated %d recommendations for %s", len(recs), args.Path),
+		Summary:         fmt.Sprintf("Generated %d recommendations for %s", len(recs), path),
 		MetricsSnapshot: metrics,
+	}, nil
+}
+
+// =============================================================================
+// Registry handlers
+// =============================================================================
+
+type ArchRegistryAddArgs struct {
+	Path  string `json:"path"`
+	Alias string `json:"alias,omitempty"`
+}
+
+type ArchRegistryAddResult struct {
+	Alias   string `json:"alias"`
+	Path    string `json:"path"`
+	Summary string `json:"summary"`
+}
+
+func (h *HandlerRegistry) archRegistryAdd(_ context.Context, args ArchRegistryAddArgs) (*ArchRegistryAddResult, error) {
+	if h.repoRegistry == nil {
+		return nil, fmt.Errorf("repo registry not available")
+	}
+	if err := safepath.ValidateScanPath(args.Path); err != nil {
+		return nil, err
+	}
+
+	absPath, err := filepath.Abs(args.Path)
+	if err != nil {
+		return nil, fmt.Errorf("resolving path: %w", err)
+	}
+
+	alias := args.Alias
+	if alias == "" {
+		alias = filepath.Base(absPath)
+	}
+
+	if err := h.repoRegistry.Add(alias, absPath); err != nil {
+		return nil, err
+	}
+	if err := h.repoRegistry.Save(); err != nil {
+		return nil, fmt.Errorf("saving registry: %w", err)
+	}
+
+	return &ArchRegistryAddResult{
+		Alias:   alias,
+		Path:    absPath,
+		Summary: fmt.Sprintf("Registered %q -> %s", alias, absPath),
+	}, nil
+}
+
+type ArchRegistryRemoveArgs struct {
+	Alias string `json:"alias"`
+}
+
+type ArchRegistryRemoveResult struct {
+	Alias   string `json:"alias"`
+	Summary string `json:"summary"`
+}
+
+func (h *HandlerRegistry) archRegistryRemove(_ context.Context, args ArchRegistryRemoveArgs) (*ArchRegistryRemoveResult, error) {
+	if h.repoRegistry == nil {
+		return nil, fmt.Errorf("repo registry not available")
+	}
+	if args.Alias == "" {
+		return nil, fmt.Errorf("alias is required")
+	}
+
+	if err := h.repoRegistry.Remove(args.Alias); err != nil {
+		return nil, err
+	}
+	if err := h.repoRegistry.Save(); err != nil {
+		return nil, fmt.Errorf("saving registry: %w", err)
+	}
+
+	return &ArchRegistryRemoveResult{
+		Alias:   args.Alias,
+		Summary: fmt.Sprintf("Removed %q from registry", args.Alias),
+	}, nil
+}
+
+type ArchRegistryListArgs struct{}
+
+type ArchRegistryListResult struct {
+	Repos   []registry.RepoEntry `json:"repos"`
+	Summary string               `json:"summary"`
+}
+
+func (h *HandlerRegistry) archRegistryList(_ context.Context, _ ArchRegistryListArgs) (*ArchRegistryListResult, error) {
+	if h.repoRegistry == nil {
+		return &ArchRegistryListResult{
+			Repos:   []registry.RepoEntry{},
+			Summary: "No repos registered (registry not available)",
+		}, nil
+	}
+
+	entries := h.repoRegistry.List()
+	if entries == nil {
+		entries = []registry.RepoEntry{}
+	}
+
+	return &ArchRegistryListResult{
+		Repos:   entries,
+		Summary: fmt.Sprintf("%d repos registered", len(entries)),
 	}, nil
 }
 

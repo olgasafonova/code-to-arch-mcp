@@ -13,6 +13,7 @@ Go MCP server that scans codebases, generates architecture diagrams, and detects
 - `internal/detector/` - Boundary detection, topology inference, dataflow tracing, rule validation, recommendations
 - `internal/render/` - Output renderers: Mermaid, PlantUML, C4, Structurizr, draw.io, Excalidraw
 - `internal/drift/` - Drift detection: graph comparison (exact ID match), severity classification, reports
+- `internal/registry/` - Persistent repo registry (aliases, scan metadata, state paths)
 - `internal/infra/` - Cache, persistent state (persist.go for ~/.mcp-context/)
 - `tools/` - MCP tool definitions and handlers
 - `tracing/` - OpenTelemetry setup
@@ -24,6 +25,7 @@ Go MCP server that scans codebases, generates architecture diagrams, and detects
 - **validation** (3 tools): arch_validate, arch_metrics, arch_recommend
 - **history** (1 tool): arch_history
 - **export** (1 tool): arch_snapshot
+- **registry** (3 tools): arch_registry_add, arch_registry_remove, arch_registry_list
 
 ## Key Patterns
 - ArchGraph is the central model; all analyzers produce Nodes and Edges into the same graph
@@ -34,6 +36,8 @@ Go MCP server that scans codebases, generates architecture diagrams, and detects
 - Renderers implement `Render(graph *ArchGraph, opts RenderOptions) (string, error)`
 - Drift detection uses exact node ID matching + edge key comparison (no fuzzy matching)
 - "USE WHEN" description pattern for optimal LLM tool selection
+- Registry aliases enable `repo` param on all tools; resolveRepoPath resolves alias to path
+- Registry-based scans persist incremental ScanState to ~/.mcp-context/code-to-arch/state/<alias>.json
 
 ## Build & Test
 ```bash

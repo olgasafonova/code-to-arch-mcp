@@ -51,7 +51,21 @@ func main() {
 
 ## Getting Started
 
-Point any tool at a codebase directory path.
+Point any tool at a codebase directory path, or register repos by alias for repeated use.
+
+### Register a repo (optional):
+"Register this project for future scans"
+-> USE: arch_registry_add (saves alias for path reuse)
+
+### List registered repos:
+"What repos are registered?"
+-> USE: arch_registry_list
+
+### Remove a repo:
+"Remove the code-to-arch alias"
+-> USE: arch_registry_remove
+
+Once registered, use repo="alias" instead of path in any tool.
 
 ## Tool Selection Guide
 

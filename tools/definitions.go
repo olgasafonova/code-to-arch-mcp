@@ -18,7 +18,7 @@ func ptr[T any](v T) *T {
 	return &v
 }
 
-// AllTools defines the 14 MCP tools for code-to-arch analysis.
+// AllTools defines the 17 MCP tools for code-to-arch analysis.
 var AllTools = []ToolSpec{
 	{
 		Name:   "arch_scan",
@@ -209,6 +209,39 @@ Combines validation, metrics, and pattern analysis to produce actionable recomme
 For just violations, use arch_validate. For just metrics, use arch_metrics.
 FAILS WHEN: no architecture data loaded (run arch_scan or arch_focus first).`,
 		Category:   "validation",
+		ReadOnly:   true,
+		Idempotent: true,
+	},
+	{
+		Name:   "arch_registry_add",
+		Method: "ArchRegistryAdd",
+		Title:  "Register Repository",
+		Description: `Register a codebase directory under a short alias for repeated use.
+USE WHEN the user wants to avoid passing the full path every time, or wants persistent incremental scan state across sessions.
+Pass the absolute path and an optional alias (defaults to the directory basename).
+Aliases persist to ~/.mcp-context/code-to-arch/registry.json.
+FAILS WHEN: path doesn't exist or is not a directory, alias is already registered (pick a different alias).`,
+		Category: "registry",
+	},
+	{
+		Name:   "arch_registry_remove",
+		Method: "ArchRegistryRemove",
+		Title:  "Unregister Repository",
+		Description: `Remove a previously registered repository by alias.
+USE WHEN the user no longer needs an alias, or wants to re-register a path under a different name.
+Also deletes any persisted incremental scan state for the alias.
+FAILS WHEN: alias not found in registry.`,
+		Category: "registry",
+	},
+	{
+		Name:   "arch_registry_list",
+		Method: "ArchRegistryList",
+		Title:  "List Registered Repositories",
+		Description: `List all registered repositories with their aliases, paths, and last scan metadata.
+USE WHEN the user asks "what repos are registered?" or wants to see available aliases.
+Entries whose paths no longer exist on disk are marked stale.
+Returns an empty list if no repos are registered.`,
+		Category:   "registry",
 		ReadOnly:   true,
 		Idempotent: true,
 	},

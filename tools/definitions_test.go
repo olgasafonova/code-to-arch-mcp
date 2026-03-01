@@ -26,8 +26,8 @@ func TestAllToolsHaveRequiredFields(t *testing.T) {
 }
 
 func TestAllToolsHaveExpectedCount(t *testing.T) {
-	if len(AllTools) != 14 {
-		t.Fatalf("expected 14 tools, got %d", len(AllTools))
+	if len(AllTools) != 17 {
+		t.Fatalf("expected 17 tools, got %d", len(AllTools))
 	}
 }
 
@@ -51,22 +51,28 @@ func TestToolNamesAreUnique(t *testing.T) {
 
 func TestIsStdlib(t *testing.T) {
 	tests := []struct {
-		input string
-		want  bool
+		input      string
+		modulePath string
+		want       bool
 	}{
-		{"fmt", true},
-		{"net/http", true},
-		{"encoding/json", true},
-		{"golang.org/x/crypto", true},  // extended stdlib
-		{"golang.org/x/text", true},    // extended stdlib
-		{"github.com/user/pkg", false}, // external
-		{"gorm.io/gorm", false},        // external
-		{"mycompany.com/svc", false},   // external
+		{"fmt", "", true},
+		{"net/http", "", true},
+		{"encoding/json", "", true},
+		{"golang.org/x/crypto", "", true},  // extended stdlib
+		{"golang.org/x/text", "", true},    // extended stdlib
+		{"github.com/user/pkg", "", false}, // external
+		{"gorm.io/gorm", "", false},        // external
+		{"mycompany.com/svc", "", false},   // external
+		// Module-path awareness
+		{"github.com/user/repo/internal/model", "github.com/user/repo", false}, // module-internal
+		{"github.com/user/repo/pkg/util", "github.com/user/repo", false},       // module-internal
+		{"internal/model", "", true},                                           // no go.mod fallback: treated as stdlib
+		{"github.com/other/repo", "github.com/user/repo", false},               // external (different module)
 	}
 	for _, tt := range tests {
-		got := isStdlib(tt.input)
+		got := isStdlib(tt.input, tt.modulePath)
 		if got != tt.want {
-			t.Errorf("isStdlib(%q) = %v, want %v", tt.input, got, tt.want)
+			t.Errorf("isStdlib(%q, %q) = %v, want %v", tt.input, tt.modulePath, got, tt.want)
 		}
 	}
 }
