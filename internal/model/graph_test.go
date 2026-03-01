@@ -183,6 +183,57 @@ func TestSummary(t *testing.T) {
 	}
 }
 
+func TestResolvedEdges_ConfidencePropagation(t *testing.T) {
+	g := NewGraph("/tmp/project")
+	g.AddNode(&Node{ID: "pkg:a", Name: "A", Type: NodePackage, Path: "/tmp/project/internal/a"})
+	g.AddNode(&Node{ID: "pkg:b", Name: "B", Type: NodePackage, Path: "/tmp/project/internal/b"})
+
+	// Direct edge (no import: prefix) should keep confidence as-is
+	g.AddEdge(&Edge{Source: "pkg:a", Target: "pkg:b", Type: EdgeDependency, Confidence: 0.9})
+
+	resolved := g.ResolvedEdges()
+	if len(resolved) != 1 {
+		t.Fatalf("expected 1 resolved edge, got %d", len(resolved))
+	}
+	if resolved[0].Confidence != 0.9 {
+		t.Fatalf("expected confidence 0.9 for direct edge, got %.2f", resolved[0].Confidence)
+	}
+}
+
+func TestResolvedEdges_ConfidencePenalty(t *testing.T) {
+	g := NewGraph("/tmp/project")
+	g.AddNode(&Node{ID: "pkg:a", Name: "A", Type: NodePackage, Path: "/tmp/project/internal/a"})
+	g.AddNode(&Node{ID: "pkg:b", Name: "B", Type: NodePackage, Path: "/tmp/project/internal/b"})
+
+	// Import-resolved edge should get 0.1 penalty
+	g.AddEdge(&Edge{Source: "pkg:a", Target: "import:github.com/user/project/internal/b", Type: EdgeDependency, Confidence: 0.9})
+
+	resolved := g.ResolvedEdges()
+	if len(resolved) != 1 {
+		t.Fatalf("expected 1 resolved edge, got %d", len(resolved))
+	}
+	if resolved[0].Confidence != 0.8 {
+		t.Errorf("expected confidence 0.8 after penalty, got %.2f", resolved[0].Confidence)
+	}
+}
+
+func TestResolvedEdges_ConfidenceFloor(t *testing.T) {
+	g := NewGraph("/tmp/project")
+	g.AddNode(&Node{ID: "pkg:a", Name: "A", Type: NodePackage, Path: "/tmp/project/internal/a"})
+	g.AddNode(&Node{ID: "pkg:b", Name: "B", Type: NodePackage, Path: "/tmp/project/internal/b"})
+
+	// Low confidence import should floor at 0.5
+	g.AddEdge(&Edge{Source: "pkg:a", Target: "import:github.com/user/project/internal/b", Type: EdgeDependency, Confidence: 0.5})
+
+	resolved := g.ResolvedEdges()
+	if len(resolved) != 1 {
+		t.Fatalf("expected 1 resolved edge, got %d", len(resolved))
+	}
+	if resolved[0].Confidence != 0.5 {
+		t.Errorf("expected confidence floor 0.5, got %.2f", resolved[0].Confidence)
+	}
+}
+
 func TestNodesSortedDeterministically(t *testing.T) {
 	g := NewGraph("/tmp")
 	g.AddNode(&Node{ID: "z", Name: "Z", Type: NodeService})

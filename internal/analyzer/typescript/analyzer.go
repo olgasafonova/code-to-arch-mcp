@@ -100,10 +100,11 @@ func (a *Analyzer) Analyze(path string) ([]*model.Node, []*model.Edge, error) {
 		}
 
 		edges = append(edges, &model.Edge{
-			Source: modID,
-			Target: "import:" + importPath,
-			Type:   model.EdgeDependency,
-			Label:  importPath,
+			Source:     modID,
+			Target:     "import:" + importPath,
+			Type:       model.EdgeDependency,
+			Label:      importPath,
+			Confidence: 0.9,
 		})
 
 		infraNodes, infraEdges := common.ClassifyImport(importPath, modID, infraPatterns, "/")
@@ -118,6 +119,13 @@ func (a *Analyzer) Analyze(path string) ([]*model.Node, []*model.Edge, error) {
 	routeNodes, routeEdges := extractRoutes(root, src, modID, path, framework)
 	nodes = append(nodes, routeNodes...)
 	edges = append(edges, routeEdges...)
+
+	// Extract NestJS decorator-based routes
+	if framework == "nestjs" {
+		nestNodes, nestEdges := extractNestJSRoutes(root, src, modID, path)
+		nodes = append(nodes, nestNodes...)
+		edges = append(edges, nestEdges...)
+	}
 
 	// Detect outbound HTTP client calls
 	callNodes, callEdges := extractHTTPCalls(root, src, modID)
@@ -191,12 +199,21 @@ var httpMethods = map[string]bool{
 
 // frameworkPackages maps npm package names to framework labels.
 var frameworkPackages = map[string]string{
-	"express":    "express",
-	"fastify":    "fastify",
-	"koa":        "koa",
-	"hapi":       "hapi",
-	"@hapi/hapi": "hapi",
-	"restify":    "restify",
+	"express":        "express",
+	"fastify":        "fastify",
+	"koa":            "koa",
+	"hapi":           "hapi",
+	"@hapi/hapi":     "hapi",
+	"restify":        "restify",
+	"@nestjs/common": "nestjs",
+	"@nestjs/core":   "nestjs",
+}
+
+// nestjsRouteDecorators maps NestJS HTTP method decorator names to HTTP methods.
+var nestjsRouteDecorators = map[string]string{
+	"Get": "GET", "Post": "POST", "Put": "PUT",
+	"Delete": "DELETE", "Patch": "PATCH", "All": "ALL",
+	"Head": "HEAD", "Options": "OPTIONS",
 }
 
 // detectFramework checks imports to determine the web framework in use.
@@ -270,14 +287,272 @@ func extractRoutes(root *sitter.Node, src []byte, modID, filePath, framework str
 			},
 		})
 		edges = append(edges, &model.Edge{
-			Source: modID,
-			Target: endpointID,
-			Type:   model.EdgeAPICall,
-			Label:  "serves",
+			Source:     modID,
+			Target:     endpointID,
+			Type:       model.EdgeAPICall,
+			Label:      "serves",
+			Confidence: 0.85,
 		})
 	})
 
 	return nodes, edges
+}
+
+// extractNestJSRoutes detects NestJS @Controller/@Get/@Post decorator patterns
+// and creates endpoint nodes. Also detects @Injectable() as service nodes.
+func extractNestJSRoutes(root *sitter.Node, src []byte, modID, filePath string) ([]*model.Node, []*model.Edge) {
+	var nodes []*model.Node
+	var edges []*model.Edge
+
+	common.WalkTree(root, func(node *sitter.Node) {
+		if node.Type() != "class_declaration" {
+			return
+		}
+
+		// Look for @Controller decorator on or above this class
+		controllerPath := findControllerPath(node, src)
+		if controllerPath == "" {
+			// Check @Injectable for service detection
+			if hasDecorator(node, src, "Injectable") {
+				className := extractClassName(node, src)
+				if className != "" {
+					line := int(node.StartPoint().Row) + 1
+					serviceID := fmt.Sprintf("service:%s:%d", filepath.Base(filePath), line)
+					nodes = append(nodes, &model.Node{
+						ID:       serviceID,
+						Name:     className,
+						Type:     model.NodeModule,
+						Language: "typescript",
+						Path:     filePath,
+						Properties: map[string]string{
+							"injectable": "true",
+							"framework":  "nestjs",
+							"line":       fmt.Sprintf("%d", line),
+						},
+					})
+					edges = append(edges, &model.Edge{
+						Source:     modID,
+						Target:     serviceID,
+						Type:       model.EdgeDependency,
+						Label:      "provides",
+						Confidence: 0.85,
+					})
+				}
+			}
+			return
+		}
+
+		body := node.ChildByFieldName("body")
+		if body == nil {
+			return
+		}
+
+		// Walk class body: decorators appear as siblings before method_definition
+		var pendingDecorators []*sitter.Node
+		for i := 0; i < int(body.ChildCount()); i++ {
+			child := body.Child(i)
+			if child.Type() == "decorator" {
+				pendingDecorators = append(pendingDecorators, child)
+				continue
+			}
+			if child.Type() != "method_definition" {
+				pendingDecorators = nil
+				continue
+			}
+
+			// Check pending sibling decorators for route decorators
+			httpMethod, routePath := findRouteDecorator(pendingDecorators, src)
+			if httpMethod == "" {
+				// Also check children of the method node (some grammars nest decorators)
+				httpMethod, routePath = findRouteDecorator(collectChildDecorators(child), src)
+			}
+			pendingDecorators = nil
+
+			if httpMethod == "" {
+				continue
+			}
+
+			fullPath := joinPaths(controllerPath, routePath)
+			line := int(child.StartPoint().Row) + 1
+			endpointID := fmt.Sprintf("endpoint:%s:%d", filepath.Base(filePath), line)
+
+			nodes = append(nodes, &model.Node{
+				ID:       endpointID,
+				Name:     fmt.Sprintf("%s %s", httpMethod, fullPath),
+				Type:     model.NodeEndpoint,
+				Language: "typescript",
+				Path:     filePath,
+				Properties: map[string]string{
+					"method":    strings.ToLower(httpMethod),
+					"route":     fullPath,
+					"line":      fmt.Sprintf("%d", line),
+					"framework": "nestjs",
+				},
+			})
+			edges = append(edges, &model.Edge{
+				Source:     modID,
+				Target:     endpointID,
+				Type:       model.EdgeAPICall,
+				Label:      "serves",
+				Confidence: 0.85,
+			})
+		}
+	})
+
+	return nodes, edges
+}
+
+// findControllerPath looks for @Controller('path') on a class_declaration.
+// Checks both the node's own children and its parent's children (for export_statement wrapping).
+func findControllerPath(classNode *sitter.Node, src []byte) string {
+	// Check decorators that are children of the class node
+	for i := 0; i < int(classNode.ChildCount()); i++ {
+		child := classNode.Child(i)
+		if child.Type() == "decorator" {
+			name, arg := extractDecoratorInfo(child, src)
+			if name == "Controller" {
+				if arg == "" {
+					return "/"
+				}
+				return arg
+			}
+		}
+	}
+
+	// Check preceding siblings in the parent (export_statement or program)
+	parent := classNode.Parent()
+	if parent == nil {
+		return ""
+	}
+	for i := 0; i < int(parent.ChildCount()); i++ {
+		child := parent.Child(i)
+		if child == classNode {
+			break // Stop once we reach the class itself
+		}
+		if child.Type() == "decorator" {
+			name, arg := extractDecoratorInfo(child, src)
+			if name == "Controller" {
+				if arg == "" {
+					return "/"
+				}
+				return arg
+			}
+		}
+	}
+
+	return ""
+}
+
+// hasDecorator checks if a class has a specific decorator (by name).
+func hasDecorator(classNode *sitter.Node, src []byte, decoratorName string) bool {
+	// Check own children
+	for i := 0; i < int(classNode.ChildCount()); i++ {
+		child := classNode.Child(i)
+		if child.Type() == "decorator" {
+			name, _ := extractDecoratorInfo(child, src)
+			if name == decoratorName {
+				return true
+			}
+		}
+	}
+	// Check preceding siblings in parent
+	parent := classNode.Parent()
+	if parent == nil {
+		return false
+	}
+	for i := 0; i < int(parent.ChildCount()); i++ {
+		child := parent.Child(i)
+		if child == classNode {
+			break
+		}
+		if child.Type() == "decorator" {
+			name, _ := extractDecoratorInfo(child, src)
+			if name == decoratorName {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// extractDecoratorInfo extracts the decorator name and first string argument.
+// For @Controller('/users') returns ("Controller", "/users").
+// For @Get() returns ("Get", "").
+func extractDecoratorInfo(decorator *sitter.Node, src []byte) (name, arg string) {
+	for i := 0; i < int(decorator.ChildCount()); i++ {
+		child := decorator.Child(i)
+		if child.Type() == "call_expression" {
+			fn := child.ChildByFieldName("function")
+			if fn != nil && fn.Type() == "identifier" {
+				name = fn.Content(src)
+			}
+			args := child.ChildByFieldName("arguments")
+			if args != nil {
+				// First real argument (skip parentheses)
+				for j := 0; j < int(args.ChildCount()); j++ {
+					argChild := args.Child(j)
+					if argChild.Type() == "string" {
+						arg = extractStringLiteral(argChild, src)
+						break
+					}
+				}
+			}
+			return name, arg
+		}
+		// Bare decorator without call: @Get (no parentheses)
+		if child.Type() == "identifier" {
+			return child.Content(src), ""
+		}
+	}
+	return "", ""
+}
+
+// extractClassName gets the class name from a class_declaration node.
+func extractClassName(node *sitter.Node, src []byte) string {
+	nameNode := node.ChildByFieldName("name")
+	if nameNode != nil {
+		return nameNode.Content(src)
+	}
+	return ""
+}
+
+// findRouteDecorator checks a slice of decorator nodes for NestJS route decorators.
+// Returns the HTTP method and route path, or empty strings if none found.
+func findRouteDecorator(decorators []*sitter.Node, src []byte) (httpMethod, routePath string) {
+	for _, d := range decorators {
+		name, arg := extractDecoratorInfo(d, src)
+		if method, ok := nestjsRouteDecorators[name]; ok {
+			return method, arg
+		}
+	}
+	return "", ""
+}
+
+// collectChildDecorators gathers decorator child nodes from a given parent.
+func collectChildDecorators(node *sitter.Node) []*sitter.Node {
+	var decorators []*sitter.Node
+	for i := 0; i < int(node.ChildCount()); i++ {
+		child := node.Child(i)
+		if child.Type() == "decorator" {
+			decorators = append(decorators, child)
+		}
+	}
+	return decorators
+}
+
+// joinPaths combines a controller base path with a method route path.
+func joinPaths(base, route string) string {
+	base = strings.TrimSuffix(base, "/")
+	if route == "" {
+		if base == "" {
+			return "/"
+		}
+		return base
+	}
+	if !strings.HasPrefix(route, "/") {
+		route = "/" + route
+	}
+	return base + route
 }
 
 // httpClientObjects are receiver/object names that indicate HTTP client calls.
@@ -358,10 +633,11 @@ func extractHTTPCalls(root *sitter.Node, src []byte, modID string) ([]*model.Nod
 			},
 		})
 		edges = append(edges, &model.Edge{
-			Source: modID,
-			Target: serviceID,
-			Type:   model.EdgeAPICall,
-			Label:  method + " " + rawURL,
+			Source:     modID,
+			Target:     serviceID,
+			Type:       model.EdgeAPICall,
+			Label:      method + " " + rawURL,
+			Confidence: 0.7,
 			Properties: map[string]string{
 				"url":  rawURL,
 				"line": fmt.Sprintf("%d", line),

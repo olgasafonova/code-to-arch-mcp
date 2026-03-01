@@ -10,6 +10,8 @@ import (
 	"strings"
 	"time"
 
+	"golang.org/x/sync/errgroup"
+
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 	"github.com/olgasafonova/code-to-arch-mcp/internal/analyzer/golang"
 	"github.com/olgasafonova/code-to-arch-mcp/internal/analyzer/python"
@@ -39,7 +41,7 @@ func NewHandlerRegistry(logger *slog.Logger) *HandlerRegistry {
 
 	return &HandlerRegistry{
 		scanner: s,
-		cache:   infra.NewCache[*scanner.ScanResult](30*time.Second, 10),
+		cache:   infra.NewCache[*scanner.ScanResult](5*time.Minute, 10),
 		logger:  logger,
 	}
 }
@@ -109,9 +111,11 @@ func (sc ScanControl) toScanOptions() scanner.ScanOptions {
 	}
 	if sc.TimeoutSecs > 0 {
 		opts.Timeout = time.Duration(sc.TimeoutSecs) * time.Second
+	} else {
+		opts.Timeout = 120 * time.Second
 	}
 	if sc.Workers > 0 {
-		opts.Workers = sc.Workers
+		opts.Workers = min(sc.Workers, 32)
 	}
 	opts.SkipDirs = sc.SkipDirs
 	opts.SkipGlobs = sc.SkipGlobs
@@ -336,6 +340,8 @@ func (h *HandlerRegistry) archDependencies(ctx context.Context, args ArchDepende
 		return nil, fmt.Errorf("scanning codebase: %w", err)
 	}
 
+	modulePath := readModulePath(args.Path)
+
 	var internal, external, infra []string
 	seen := make(map[string]bool)
 
@@ -362,8 +368,7 @@ func (h *HandlerRegistry) archDependencies(ctx context.Context, args ArchDepende
 			}
 		}
 
-		// Simple heuristic: stdlib has no dots in first segment
-		if isStdlib(target) {
+		if isStdlib(target, modulePath) {
 			continue // skip stdlib
 		}
 		external = append(external, target)
@@ -392,7 +397,27 @@ func (h *HandlerRegistry) archDependencies(ctx context.Context, args ArchDepende
 	}, nil
 }
 
-func isStdlib(importPath string) bool {
+// readModulePath extracts the module declaration from go.mod in the given directory.
+// Returns "" if go.mod doesn't exist or can't be parsed.
+func readModulePath(dir string) string {
+	data, err := os.ReadFile(filepath.Join(dir, "go.mod"))
+	if err != nil {
+		return ""
+	}
+	for _, line := range strings.Split(string(data), "\n") {
+		line = strings.TrimSpace(line)
+		if strings.HasPrefix(line, "module ") {
+			return strings.TrimSpace(strings.TrimPrefix(line, "module "))
+		}
+	}
+	return ""
+}
+
+func isStdlib(importPath, modulePath string) bool {
+	// If it belongs to the scanned module, it's internal — not stdlib
+	if modulePath != "" && strings.HasPrefix(importPath, modulePath) {
+		return false
+	}
 	// Go stdlib packages don't contain dots in the first path segment.
 	// Extended stdlib (golang.org/x/*) also excluded from external deps.
 	first, _, _ := strings.Cut(importPath, "/")
@@ -408,9 +433,10 @@ type ArchDataflowArgs struct {
 }
 
 type ArchDataflowResult struct {
-	Endpoints []string `json:"endpoints"`
-	DataPaths []string `json:"data_paths"`
-	Summary   string   `json:"summary"`
+	Endpoints []string             `json:"endpoints"`
+	DataPaths []string             `json:"data_paths"`
+	Traces    []model.ProcessTrace `json:"traces"`
+	Summary   string               `json:"summary"`
 }
 
 func (h *HandlerRegistry) archDataflow(ctx context.Context, args ArchDataflowArgs) (*ArchDataflowResult, error) {
@@ -440,10 +466,13 @@ func (h *HandlerRegistry) archDataflow(ctx context.Context, args ArchDataflowArg
 		dataPaths = []string{}
 	}
 
+	traces := detector.ComputeTraces(graph)
+
 	return &ArchDataflowResult{
 		Endpoints: endpoints,
 		DataPaths: dataPaths,
-		Summary:   fmt.Sprintf("Found %d endpoints and %d data paths", len(endpoints), len(dataPaths)),
+		Traces:    traces,
+		Summary:   fmt.Sprintf("Found %d endpoints, %d data paths, %d process traces", len(endpoints), len(dataPaths), len(traces)),
 	}, nil
 }
 
@@ -506,6 +535,9 @@ func (h *HandlerRegistry) archDiff(ctx context.Context, args ArchDiffArgs) (*mod
 	}
 	if args.SnapshotFile == "" {
 		return nil, fmt.Errorf("snapshot_file is required")
+	}
+	if err := safepath.ValidateOutputPath(args.SnapshotFile, args.Path); err != nil {
+		return nil, fmt.Errorf("invalid snapshot file path: %w", err)
 	}
 
 	// Load baseline from snapshot
@@ -629,6 +661,12 @@ type ArchHistoryResult struct {
 	Summary string               `json:"summary"`
 }
 
+// scanResult holds the output of scanning a single commit in parallel.
+type scanResult struct {
+	graph *model.ArchGraph
+	entry drift.HistoryEntry
+}
+
 func (h *HandlerRegistry) archHistory(ctx context.Context, args ArchHistoryArgs) (*ArchHistoryResult, error) {
 	if err := safepath.ValidateScanPath(args.Path); err != nil {
 		return nil, err
@@ -643,59 +681,56 @@ func (h *HandlerRegistry) archHistory(ctx context.Context, args ArchHistoryArgs)
 		return nil, fmt.Errorf("getting git history: %w", err)
 	}
 
-	var entries []drift.HistoryEntry
+	// Phase 1: Parallel scan — each goroutine writes only to its own index.
+	results := make([]scanResult, len(commits))
+	g, gctx := errgroup.WithContext(ctx)
+	g.SetLimit(4) // cap concurrent git worktrees
+
+	for idx, c := range commits {
+		results[idx].entry = drift.HistoryEntry{
+			Ref:     c.Hash[:8],
+			Date:    c.Date,
+			Message: c.Message,
+		}
+		g.Go(func() error {
+			worktree, cleanup, wErr := drift.CheckoutRef(gctx, args.Path, c.Hash)
+			if wErr != nil {
+				return nil // non-fatal: entry stays with zero counts
+			}
+			graph, scanErr := h.scanner.Scan(worktree)
+			cleanup()
+			if scanErr != nil {
+				return nil // non-fatal
+			}
+			results[idx].graph = graph
+			results[idx].entry.NodeCount = graph.NodeCount()
+			results[idx].entry.EdgeCount = graph.EdgeCount()
+			results[idx].entry.Topology = string(graph.Topology)
+			return nil
+		})
+	}
+	if err := g.Wait(); err != nil {
+		return nil, fmt.Errorf("scanning commits: %w", err)
+	}
+
+	// Phase 2: Sequential comparison (oldest-first).
+	// commits[0] is most recent; walk from end to start.
 	var prevGraph *model.ArchGraph
-
-	// Walk commits in reverse (oldest first) to compare sequentially
-	for i := len(commits) - 1; i >= 0; i-- {
-		c := commits[i]
-		worktree, cleanup, err := drift.CheckoutRef(ctx, args.Path, c.Hash)
-		if err != nil {
-			entries = append(entries, drift.HistoryEntry{
-				Ref:     c.Hash[:8],
-				Date:    c.Date,
-				Message: c.Message,
-			})
-			continue
+	for i := len(results) - 1; i >= 0; i-- {
+		r := &results[i]
+		if r.graph != nil && prevGraph != nil {
+			report := drift.Compare(prevGraph, r.graph)
+			r.entry.ChangesFromPrevious = len(report.Changes)
 		}
-
-		graph, scanErr := h.scanner.Scan(worktree)
-		cleanup()
-
-		if scanErr != nil {
-			entries = append(entries, drift.HistoryEntry{
-				Ref:     c.Hash[:8],
-				Date:    c.Date,
-				Message: c.Message,
-			})
-			continue
+		if r.graph != nil {
+			prevGraph = r.graph
 		}
-
-		entry := drift.HistoryEntry{
-			Ref:       c.Hash[:8],
-			Date:      c.Date,
-			Message:   c.Message,
-			NodeCount: graph.NodeCount(),
-			EdgeCount: graph.EdgeCount(),
-			Topology:  string(graph.Topology),
-		}
-
-		if prevGraph != nil {
-			report := drift.Compare(prevGraph, graph)
-			entry.ChangesFromPrevious = len(report.Changes)
-		}
-
-		entries = append(entries, entry)
-		prevGraph = graph
 	}
 
-	// Reverse back to most-recent-first order
-	for i, j := 0, len(entries)-1; i < j; i, j = i+1, j-1 {
-		entries[i], entries[j] = entries[j], entries[i]
-	}
-
-	if entries == nil {
-		entries = []drift.HistoryEntry{}
+	// Collect entries in most-recent-first order (same order as commits).
+	entries := make([]drift.HistoryEntry, len(results))
+	for i, r := range results {
+		entries[i] = r.entry
 	}
 
 	return &ArchHistoryResult{
@@ -731,6 +766,9 @@ func (h *HandlerRegistry) archSnapshot(ctx context.Context, args ArchSnapshotArg
 	outFile := args.OutputFile
 	if outFile == "" {
 		outFile = filepath.Join(args.Path, "architecture.snapshot.json")
+	}
+	if err := safepath.ValidateOutputPath(outFile, args.Path); err != nil {
+		return nil, fmt.Errorf("invalid output file path: %w", err)
 	}
 
 	snap, err := drift.Save(graph, outFile, args.Label)

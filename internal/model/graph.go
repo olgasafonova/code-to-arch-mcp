@@ -52,7 +52,17 @@ type Edge struct {
 	Target     string            `json:"target"`
 	Type       EdgeType          `json:"type"`
 	Label      string            `json:"label,omitempty"`
+	Confidence float64           `json:"confidence"`
 	Properties map[string]string `json:"properties,omitempty"`
+}
+
+// ProcessTrace represents a data flow chain from an entry point to a terminal node.
+type ProcessTrace struct {
+	EntryPoint string   `json:"entry_point"`
+	Chain      []string `json:"chain"`
+	EdgeTypes  []string `json:"edge_types"`
+	Terminal   string   `json:"terminal"`
+	Confidence float64  `json:"confidence"`
 }
 
 // ArchGraph is the central architecture model.
@@ -349,11 +359,20 @@ func (g *ArchGraph) ResolvedEdges() []*Edge {
 		}
 		seen[key] = true
 
+		conf := e.Confidence
+		if strings.HasPrefix(e.Target, "import:") && conf > 0 {
+			conf -= 0.1
+			if conf < 0.5 {
+				conf = 0.5
+			}
+		}
+
 		result = append(result, &Edge{
-			Source: e.Source,
-			Target: target,
-			Type:   e.Type,
-			Label:  e.Label,
+			Source:     e.Source,
+			Target:     target,
+			Type:       e.Type,
+			Label:      e.Label,
+			Confidence: conf,
 		})
 	}
 	return result

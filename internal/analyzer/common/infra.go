@@ -34,10 +34,11 @@ func ClassifyImport(importPath, modID string, patterns []InfraPattern, separator
 				},
 			}}
 			edges := []*model.Edge{{
-				Source: modID,
-				Target: pattern.NodeID,
-				Type:   pattern.EdgeType,
-				Label:  pattern.NodeName,
+				Source:     modID,
+				Target:     pattern.NodeID,
+				Type:       pattern.EdgeType,
+				Label:      pattern.NodeName,
+				Confidence: 0.8,
 			}}
 			return nodes, edges
 		}

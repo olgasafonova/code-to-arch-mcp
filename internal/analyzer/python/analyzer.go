@@ -127,10 +127,11 @@ func extractImports(root *sitter.Node, src []byte, modID string) ([]*model.Node,
 		}
 
 		edges = append(edges, &model.Edge{
-			Source: modID,
-			Target: "import:" + importPath,
-			Type:   model.EdgeDependency,
-			Label:  importPath,
+			Source:     modID,
+			Target:     "import:" + importPath,
+			Type:       model.EdgeDependency,
+			Label:      importPath,
+			Confidence: 0.9,
 		})
 
 		infraNodes, infraEdges := common.ClassifyImport(importPath, modID, infraPatterns, ".")
@@ -278,10 +279,11 @@ func extractRoutes(root *sitter.Node, src []byte, modID, filePath, framework str
 				},
 			})
 			edges = append(edges, &model.Edge{
-				Source: modID,
-				Target: endpointID,
-				Type:   model.EdgeAPICall,
-				Label:  "serves",
+				Source:     modID,
+				Target:     endpointID,
+				Type:       model.EdgeAPICall,
+				Label:      "serves",
+				Confidence: 0.85,
 			})
 		}
 	})
@@ -407,10 +409,11 @@ func extractDjangoURLPatterns(root *sitter.Node, src []byte, modID, filePath str
 			},
 		})
 		edges = append(edges, &model.Edge{
-			Source: modID,
-			Target: endpointID,
-			Type:   model.EdgeAPICall,
-			Label:  "serves",
+			Source:     modID,
+			Target:     endpointID,
+			Type:       model.EdgeAPICall,
+			Label:      "serves",
+			Confidence: 0.85,
 		})
 	})
 
@@ -477,10 +480,11 @@ func extractHTTPCalls(root *sitter.Node, src []byte, modID string) ([]*model.Nod
 			},
 		})
 		edges = append(edges, &model.Edge{
-			Source: modID,
-			Target: serviceID,
-			Type:   model.EdgeAPICall,
-			Label:  strings.ToUpper(methodName) + " " + rawURL,
+			Source:     modID,
+			Target:     serviceID,
+			Type:       model.EdgeAPICall,
+			Label:      strings.ToUpper(methodName) + " " + rawURL,
+			Confidence: 0.7,
 			Properties: map[string]string{
 				"url":  rawURL,
 				"line": fmt.Sprintf("%d", line),

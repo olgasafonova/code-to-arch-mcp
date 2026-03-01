@@ -67,10 +67,11 @@ func (a *Analyzer) Analyze(path string) ([]*model.Node, []*model.Edge, error) {
 	for _, imp := range file.Imports {
 		importPath := strings.Trim(imp.Path.Value, `"`)
 		edges = append(edges, &model.Edge{
-			Source: pkgID,
-			Target: "import:" + importPath,
-			Type:   model.EdgeDependency,
-			Label:  importPath,
+			Source:     pkgID,
+			Target:     "import:" + importPath,
+			Type:       model.EdgeDependency,
+			Label:      importPath,
+			Confidence: 0.9,
 		})
 
 		// Detect known infrastructure imports
@@ -120,10 +121,11 @@ func (a *Analyzer) classifyImport(importPath, pkgID string, nodes []*model.Node,
 		}
 		nodes = append(nodes, dbNode)
 		edges = append(edges, &model.Edge{
-			Source: pkgID,
-			Target: dbNode.ID,
-			Type:   model.EdgeReadWrite,
-			Label:  "database access",
+			Source:     pkgID,
+			Target:     dbNode.ID,
+			Type:       model.EdgeReadWrite,
+			Label:      "database access",
+			Confidence: 0.8,
 		})
 
 	// Message queues
@@ -141,10 +143,11 @@ func (a *Analyzer) classifyImport(importPath, pkgID string, nodes []*model.Node,
 		}
 		nodes = append(nodes, queueNode)
 		edges = append(edges, &model.Edge{
-			Source: pkgID,
-			Target: queueNode.ID,
-			Type:   model.EdgePublish,
-			Label:  "message queue",
+			Source:     pkgID,
+			Target:     queueNode.ID,
+			Type:       model.EdgePublish,
+			Label:      "message queue",
+			Confidence: 0.8,
 		})
 
 	// Cache
@@ -160,10 +163,11 @@ func (a *Analyzer) classifyImport(importPath, pkgID string, nodes []*model.Node,
 		}
 		nodes = append(nodes, cacheNode)
 		edges = append(edges, &model.Edge{
-			Source: pkgID,
-			Target: cacheNode.ID,
-			Type:   model.EdgeReadWrite,
-			Label:  "cache access",
+			Source:     pkgID,
+			Target:     cacheNode.ID,
+			Type:       model.EdgeReadWrite,
+			Label:      "cache access",
+			Confidence: 0.8,
 		})
 
 	// HTTP clients (external API calls)
@@ -175,10 +179,11 @@ func (a *Analyzer) classifyImport(importPath, pkgID string, nodes []*model.Node,
 		}
 		nodes = append(nodes, apiNode)
 		edges = append(edges, &model.Edge{
-			Source: pkgID,
-			Target: apiNode.ID,
-			Type:   model.EdgeAPICall,
-			Label:  "HTTP client",
+			Source:     pkgID,
+			Target:     apiNode.ID,
+			Type:       model.EdgeAPICall,
+			Label:      "HTTP client",
+			Confidence: 0.8,
 		})
 	}
 
@@ -262,10 +267,11 @@ func (a *Analyzer) analyzeCall(call *ast.CallExpr, pkgID, filePath string, fset 
 				},
 			})
 			edges = append(edges, &model.Edge{
-				Source: pkgID,
-				Target: endpointID,
-				Type:   model.EdgeAPICall,
-				Label:  "serves",
+				Source:     pkgID,
+				Target:     endpointID,
+				Type:       model.EdgeAPICall,
+				Label:      "serves",
+				Confidence: 0.85,
 			})
 		}
 	}
@@ -336,10 +342,11 @@ func extractHTTPCalls(call *ast.CallExpr, pkgID string, fset *token.FileSet) ([]
 		},
 	}
 	edge := &model.Edge{
-		Source: pkgID,
-		Target: serviceID,
-		Type:   model.EdgeAPICall,
-		Label:  method + " " + rawURL,
+		Source:     pkgID,
+		Target:     serviceID,
+		Type:       model.EdgeAPICall,
+		Label:      method + " " + rawURL,
+		Confidence: 0.7,
 		Properties: map[string]string{
 			"url":  rawURL,
 			"line": fmt.Sprintf("%d", pos.Line),
