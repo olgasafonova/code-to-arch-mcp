@@ -6,7 +6,9 @@ No configuration files, no manual diagramming. Static analysis builds the archit
 
 ## Why
 
-Architecture diagrams go stale the day you commit them. Most teams know they should review architecture regularly, check for circular dependencies, and catch structural drift between branches. In practice, these tasks are manual enough that they don't happen.
+Architecture diagrams go stale the day you commit them. When AI generates code faster than teams can comprehend the changes, the gap between system complexity and shared understanding grows. This is cognitive debt, and it compounds silently.
+
+Most teams know they should review architecture regularly, check for circular dependencies, and catch structural drift between branches. In practice, these tasks are manual enough that they don't happen.
 
 - This tool generates architecture from code, so diagrams are always current. No one has to maintain them.
 - `arch_validate` turns "check for circular dependencies" from a retro action item into a one-prompt task.
@@ -20,9 +22,9 @@ Architecture diagrams go stale the day you commit them. Most teams know they sho
 
 **Nodes** represent components: services, modules, packages, databases, message queues, caches, external APIs, HTTP endpoints.
 
-**Edges** represent relationships: dependencies, API calls, data flows, publish/subscribe, read/write.
+**Edges** represent relationships with confidence scores: dependencies (0.9), endpoint registrations (0.85), infrastructure links (0.8), HTTP client calls (0.7). Confidence lets consumers filter by reliability; direct AST-resolved imports score higher than heuristic matches.
 
-[MCP](https://modelcontextprotocol.io/) (Model Context Protocol) lets AI assistants call external tools. This server gives your AI assistant 12 architecture analysis tools.
+[MCP](https://modelcontextprotocol.io/) (Model Context Protocol) lets AI assistants call external tools. This server gives your AI assistant 14 architecture analysis tools.
 
 ## What you get
 
@@ -39,15 +41,15 @@ Run `arch_scan` on a Go project and get back a structured architecture graph:
     {"id": "infra:nats", "name": "NATS", "type": "queue"}
   ],
   "edges": [
-    {"source": "pkg:api/server", "target": "infra:postgresql", "type": "read_write"},
-    {"source": "pkg:api/server", "target": "infra:redis", "type": "read_write"},
-    {"source": "pkg:worker/processor", "target": "infra:nats", "type": "subscribe"}
+    {"source": "pkg:api/server", "target": "infra:postgresql", "type": "read_write", "confidence": 0.8},
+    {"source": "pkg:api/server", "target": "infra:redis", "type": "read_write", "confidence": 0.8},
+    {"source": "pkg:worker/processor", "target": "infra:nats", "type": "subscribe", "confidence": 0.8}
   ],
   "stats": {"files_analyzed": 47, "files_cached": 38, "files_changed": 9, "nodes_found": 12, "edges_found": 23, "duration_ms": 340}
 }
 ```
 
-Then ask `arch_generate` for a Mermaid diagram, or `arch_validate` to check for circular dependencies. Infrastructure (databases, queues, caches) is detected automatically from import paths.
+Then ask `arch_generate` for a Mermaid diagram, `arch_validate` to check for circular dependencies, or `arch_dataflow` for structured traces showing how requests flow from endpoints to databases. Infrastructure (databases, queues, caches) is detected automatically from import paths.
 
 ## Usage examples
 
@@ -61,6 +63,9 @@ Once configured, ask your LLM:
 - "What databases does this service connect to?"
 - "Export the architecture as Excalidraw"
 - "Explain the architecture decisions in this codebase"
+- "How should I improve this architecture?"
+- "What's the coupling and instability like?"
+- "Show me data flow traces from API endpoints to databases"
 - "Save this architecture as our v2.0 baseline"
 - "Scan this monorepo but limit to 500 files and skip test files"
 
@@ -70,27 +75,31 @@ Once configured, ask your LLM:
 
 | Tool | What it does |
 |------|-------------|
-| `arch_drift` | Compare architecture between two branches, tags, or commits |
-| `arch_validate` | Check for circular dependencies, orphan nodes, and layering violations |
-| `arch_scan` | Scan a codebase and return the full architecture graph |
+| `arch_scan` | Scan a codebase and return the full architecture graph with confidence-scored edges |
 | `arch_generate` | Generate a diagram (Mermaid, PlantUML, C4, Structurizr, JSON, draw.io, Excalidraw) |
-
-### All tools
-
-| Tool | What it does |
-|------|-------------|
-| `arch_scan` | Scan a codebase and return the full architecture graph |
-| `arch_focus` | Scan a specific subdirectory or service |
-| `arch_generate` | Generate a diagram (Mermaid, PlantUML, C4, Structurizr, JSON, draw.io, Excalidraw) |
-| `arch_dependencies` | Map internal, external, and infrastructure dependencies |
-| `arch_dataflow` | Trace data flow from endpoints to data stores |
-| `arch_boundaries` | Detect service boundaries and topology (monolith, monorepo, microservices) |
-| `arch_diff` | Compare current architecture against a saved baseline |
 | `arch_drift` | Compare architecture between two branches, tags, or commits |
+| `arch_dataflow` | Trace data flow from endpoints to data stores with structured process traces |
 | `arch_validate` | Check for circular dependencies, orphan nodes, and layering violations |
-| `arch_history` | Show how architecture evolved over git history |
-| `arch_snapshot` | Save current architecture as a baseline |
-| `arch_explain` | Explain topology, patterns, key decisions, and risks with code evidence |
+| `arch_recommend` | Produce prioritized architecture improvement recommendations |
+
+### All 14 tools
+
+| Tool | Category | What it does |
+|------|----------|-------------|
+| `arch_scan` | analysis | Scan a codebase and return the full architecture graph |
+| `arch_focus` | analysis | Scan a specific subdirectory or service |
+| `arch_dependencies` | analysis | Map internal, external, and infrastructure dependencies |
+| `arch_dataflow` | analysis | Trace data flow with entry-to-terminal process traces and confidence scores |
+| `arch_boundaries` | analysis | Detect service boundaries and topology (monolith, monorepo, microservices) |
+| `arch_explain` | analysis | Explain topology, patterns, key decisions, and risks with code evidence |
+| `arch_generate` | diagram | Generate a diagram in 7 formats |
+| `arch_diff` | drift | Compare current architecture against a saved baseline |
+| `arch_drift` | drift | Compare architecture between two git refs |
+| `arch_validate` | validation | Check for circular dependencies, orphan nodes, and layering violations |
+| `arch_metrics` | validation | Compute coupling, instability, and dependency depth scores |
+| `arch_recommend` | validation | Prioritized improvement recommendations from metrics + violations + patterns |
+| `arch_history` | history | Show how architecture evolved over git history |
+| `arch_snapshot` | export | Save current architecture as a baseline for drift detection |
 
 ## Supported languages
 
@@ -225,7 +234,7 @@ internal/
   analyzer/golang/         Go static analysis (go/ast)
   analyzer/typescript/     TypeScript analysis (tree-sitter)
   analyzer/python/         Python analysis (tree-sitter)
-  detector/                Boundary detection, topology, validation, explanation
+  detector/                Boundary detection, topology, validation, metrics, recommendations, process traces
   drift/                   Snapshot comparison, git ref diffing, history
   render/                  Mermaid, PlantUML, C4, Structurizr, JSON, draw.io, Excalidraw
   infra/                   Cache, persistent state (~/.mcp-context/)
