@@ -47,6 +47,10 @@ func main() {
 		Version: ServerVersion,
 	}, &mcp.ServerOptions{
 		Logger: logger,
+		// Suppress pre-initialize notifications/tools/list_changed from go-sdk.
+		// Without this, AddTool triggers a notification before the client completes
+		// the initialize handshake, causing intermittent connection failures.
+		Capabilities: &mcp.ServerCapabilities{Tools: &mcp.ToolCapabilities{}},
 		Instructions: `Code to Arch MCP - Codebase Architecture Analysis
 
 ## Getting Started
