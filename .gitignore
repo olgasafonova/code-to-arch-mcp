@@ -21,3 +21,8 @@ Thumbs.db
 
 # Snapshot files (generated baselines)
 *.archsnapshot
+
+# Beads / Dolt files (added by bd init)
+.dolt/
+*.db
+.beads-credential-key
