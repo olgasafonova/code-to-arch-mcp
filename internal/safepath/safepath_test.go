@@ -49,6 +49,32 @@ func TestValidateScanPath_SensitiveSystem(t *testing.T) {
 	}
 }
 
+func TestValidateOutputPath(t *testing.T) {
+	baseDir := t.TempDir()
+
+	tests := []struct {
+		name    string
+		file    string
+		base    string
+		wantErr bool
+	}{
+		{"valid subpath", filepath.Join(baseDir, "snapshot.json"), baseDir, false},
+		{"valid nested", filepath.Join(baseDir, "sub", "out.json"), baseDir, false},
+		{"empty path", "", baseDir, true},
+		{"dot-dot traversal", filepath.Join(baseDir, "..", "evil.json"), baseDir, true},
+		{"absolute outside", "/tmp/evil.json", baseDir, true},
+		{"sibling directory", baseDir + "attack/file.json", baseDir, true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := ValidateOutputPath(tt.file, tt.base)
+			if (err != nil) != tt.wantErr {
+				t.Errorf("ValidateOutputPath(%q, %q) error = %v, wantErr %v", tt.file, tt.base, err, tt.wantErr)
+			}
+		})
+	}
+}
+
 func TestValidateScanPath_SensitiveDotDirs(t *testing.T) {
 	home, err := os.UserHomeDir()
 	if err != nil {

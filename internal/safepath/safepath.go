@@ -78,3 +78,38 @@ func ValidateScanPath(path string) error {
 
 	return nil
 }
+
+// ValidateOutputPath checks that a file path resolves to within baseDir.
+// Unlike ValidateScanPath, the file does not need to exist yet (it may be created).
+// Returns an error if the resolved path escapes baseDir or targets a sensitive location.
+func ValidateOutputPath(filePath, baseDir string) error {
+	if filePath == "" {
+		return fmt.Errorf("file path is required")
+	}
+
+	absBase, err := filepath.Abs(baseDir)
+	if err != nil {
+		return fmt.Errorf("resolving base directory: %w", err)
+	}
+	absBase = filepath.Clean(absBase)
+
+	absFile, err := filepath.Abs(filePath)
+	if err != nil {
+		return fmt.Errorf("resolving file path: %w", err)
+	}
+	absFile = filepath.Clean(absFile)
+
+	// File must be within the base directory
+	if !strings.HasPrefix(absFile, absBase+string(filepath.Separator)) {
+		return fmt.Errorf("file path %s is outside allowed directory %s", absFile, absBase)
+	}
+
+	// Check against sensitive roots
+	for _, root := range sensitiveRoots {
+		if absFile == root || strings.HasPrefix(absFile, root+"/") {
+			return fmt.Errorf("writing to %s is not allowed", root)
+		}
+	}
+
+	return nil
+}
