@@ -44,7 +44,7 @@ func TestExcalidraw_HasElements(t *testing.T) {
 	}
 }
 
-func TestExcalidraw_ArrowBindings(t *testing.T) {
+func TestExcalidraw_ArrowRouting(t *testing.T) {
 	graph := model.NewGraph("/tmp/test")
 	graph.AddNode(&model.Node{ID: "svc:api", Name: "API", Type: model.NodeService})
 	graph.AddNode(&model.Node{ID: "infra:db", Name: "DB", Type: model.NodeDatabase})
@@ -52,14 +52,11 @@ func TestExcalidraw_ArrowBindings(t *testing.T) {
 
 	out := Excalidraw(graph, Options{ViewLevel: ViewContainer})
 
-	if !strings.Contains(out, "startBinding") {
-		t.Fatal("arrows should have startBinding")
-	}
-	if !strings.Contains(out, "endBinding") {
-		t.Fatal("arrows should have endBinding")
-	}
 	if !strings.Contains(out, `"type": "arrow"`) {
 		t.Fatal("edges should produce arrow elements")
+	}
+	if !strings.Contains(out, `"roundness"`) {
+		t.Fatal("arrows should have roundness for smooth routing")
 	}
 }
 

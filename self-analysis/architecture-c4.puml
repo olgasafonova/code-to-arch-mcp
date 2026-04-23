@@ -1,0 +1,45 @@
+@startuml
+!include <C4/C4_Container>
+
+title Code-to-Arch MCP - Self Analysis
+
+System_Boundary(system, "System") {
+    Component(pkg___code_to_arch__main, "main", "go", "Package")
+    Component(pkg___common__common, "common", "go", "Package")
+    Component(pkg___detector__detector, "detector", "go", "Package")
+    Component(pkg___drift__drift, "drift", "go", "Package")
+    Component(pkg___golang__golang, "golang", "go", "Package")
+    Component(pkg___infra__infra, "infra", "go", "Package")
+    Component(pkg___model__model, "model", "go", "Package")
+    Component(pkg___python__python, "python", "go", "Package")
+    Component(pkg___render__render, "render", "go", "Package")
+    Component(pkg___safepath__safepath, "safepath", "go", "Package")
+    Component(pkg___scanner__scanner, "scanner", "go", "Package")
+    Component(pkg___tools__tools, "tools", "go", "Package")
+    Component(pkg___tracing__tracing, "tracing", "go", "Package")
+    Component(pkg___typescript__typescript, "typescript", "go", "Package")
+}
+
+Rel(pkg___code_to_arch__main, pkg___tools__tools, "github.com/olgasafonova/code-to-arch-mcp/tools")
+Rel(pkg___code_to_arch__main, pkg___tracing__tracing, "github.com/olgasafonova/code-to-arch-mcp/tracing")
+Rel(pkg___detector__detector, pkg___model__model, "github.com/olgasafonova/code-to-arch-mcp/internal/model")
+Rel(pkg___golang__golang, pkg___common__common, "github.com/olgasafonova/code-to-arch-mcp/internal/analyzer/common")
+Rel(pkg___golang__golang, pkg___scanner__scanner, "github.com/olgasafonova/code-to-arch-mcp/internal/scanner")
+Rel(pkg___typescript__typescript, pkg___common__common, "github.com/olgasafonova/code-to-arch-mcp/internal/analyzer/common")
+Rel(pkg___typescript__typescript, pkg___scanner__scanner, "github.com/olgasafonova/code-to-arch-mcp/internal/scanner")
+Rel(pkg___common__common, pkg___model__model, "github.com/olgasafonova/code-to-arch-mcp/internal/model")
+Rel(pkg___drift__drift, pkg___model__model, "github.com/olgasafonova/code-to-arch-mcp/internal/model")
+Rel(pkg___render__render, pkg___model__model, "github.com/olgasafonova/code-to-arch-mcp/internal/model")
+Rel(pkg___scanner__scanner, pkg___model__model, "github.com/olgasafonova/code-to-arch-mcp/internal/model")
+Rel(pkg___python__python, pkg___common__common, "github.com/olgasafonova/code-to-arch-mcp/internal/analyzer/common")
+Rel(pkg___python__python, pkg___scanner__scanner, "github.com/olgasafonova/code-to-arch-mcp/internal/scanner")
+Rel(pkg___tools__tools, pkg___golang__golang, "github.com/olgasafonova/code-to-arch-mcp/internal/analyzer/golang")
+Rel(pkg___tools__tools, pkg___python__python, "github.com/olgasafonova/code-to-arch-mcp/internal/analyzer/python")
+Rel(pkg___tools__tools, pkg___typescript__typescript, "github.com/olgasafonova/code-to-arch-mcp/internal/analyzer/typescript")
+Rel(pkg___tools__tools, pkg___detector__detector, "github.com/olgasafonova/code-to-arch-mcp/internal/detector")
+Rel(pkg___tools__tools, pkg___drift__drift, "github.com/olgasafonova/code-to-arch-mcp/internal/drift")
+Rel(pkg___tools__tools, pkg___infra__infra, "github.com/olgasafonova/code-to-arch-mcp/internal/infra")
+Rel(pkg___tools__tools, pkg___render__render, "github.com/olgasafonova/code-to-arch-mcp/internal/render")
+Rel(pkg___tools__tools, pkg___safepath__safepath, "github.com/olgasafonova/code-to-arch-mcp/internal/safepath")
+
+@enduml

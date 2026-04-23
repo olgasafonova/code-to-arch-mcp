@@ -1,0 +1,43 @@
+@startuml
+title Code-to-Arch MCP - Self Analysis
+
+package "Packages" {
+    rectangle "main" as pkg___code_to_arch__main
+    rectangle "common" as pkg___common__common
+    rectangle "detector" as pkg___detector__detector
+    rectangle "drift" as pkg___drift__drift
+    rectangle "golang" as pkg___golang__golang
+    rectangle "infra" as pkg___infra__infra
+    rectangle "model" as pkg___model__model
+    rectangle "python" as pkg___python__python
+    rectangle "render" as pkg___render__render
+    rectangle "safepath" as pkg___safepath__safepath
+    rectangle "scanner" as pkg___scanner__scanner
+    rectangle "tools" as pkg___tools__tools
+    rectangle "tracing" as pkg___tracing__tracing
+    rectangle "typescript" as pkg___typescript__typescript
+}
+
+pkg___code_to_arch__main --> pkg___tools__tools : github.com/olgasafonova/code-to-arch-mcp/tools
+pkg___code_to_arch__main --> pkg___tracing__tracing : github.com/olgasafonova/code-to-arch-mcp/tracing
+pkg___detector__detector --> pkg___model__model : github.com/olgasafonova/code-to-arch-mcp/internal/model
+pkg___golang__golang --> pkg___common__common : github.com/olgasafonova/code-to-arch-mcp/internal/analyzer/common
+pkg___golang__golang --> pkg___scanner__scanner : github.com/olgasafonova/code-to-arch-mcp/internal/scanner
+pkg___typescript__typescript --> pkg___common__common : github.com/olgasafonova/code-to-arch-mcp/internal/analyzer/common
+pkg___typescript__typescript --> pkg___scanner__scanner : github.com/olgasafonova/code-to-arch-mcp/internal/scanner
+pkg___common__common --> pkg___model__model : github.com/olgasafonova/code-to-arch-mcp/internal/model
+pkg___drift__drift --> pkg___model__model : github.com/olgasafonova/code-to-arch-mcp/internal/model
+pkg___render__render --> pkg___model__model : github.com/olgasafonova/code-to-arch-mcp/internal/model
+pkg___scanner__scanner --> pkg___model__model : github.com/olgasafonova/code-to-arch-mcp/internal/model
+pkg___python__python --> pkg___common__common : github.com/olgasafonova/code-to-arch-mcp/internal/analyzer/common
+pkg___python__python --> pkg___scanner__scanner : github.com/olgasafonova/code-to-arch-mcp/internal/scanner
+pkg___tools__tools --> pkg___golang__golang : github.com/olgasafonova/code-to-arch-mcp/internal/analyzer/golang
+pkg___tools__tools --> pkg___python__python : github.com/olgasafonova/code-to-arch-mcp/internal/analyzer/python
+pkg___tools__tools --> pkg___typescript__typescript : github.com/olgasafonova/code-to-arch-mcp/internal/analyzer/typescript
+pkg___tools__tools --> pkg___detector__detector : github.com/olgasafonova/code-to-arch-mcp/internal/detector
+pkg___tools__tools --> pkg___drift__drift : github.com/olgasafonova/code-to-arch-mcp/internal/drift
+pkg___tools__tools --> pkg___infra__infra : github.com/olgasafonova/code-to-arch-mcp/internal/infra
+pkg___tools__tools --> pkg___render__render : github.com/olgasafonova/code-to-arch-mcp/internal/render
+pkg___tools__tools --> pkg___safepath__safepath : github.com/olgasafonova/code-to-arch-mcp/internal/safepath
+
+@enduml

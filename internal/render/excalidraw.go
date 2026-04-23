@@ -3,6 +3,7 @@ package render
 import (
 	"encoding/json"
 	"fmt"
+	"sort"
 
 	"github.com/olgasafonova/code-to-arch-mcp/internal/model"
 )
@@ -10,58 +11,27 @@ import (
 const (
 	excaliCellW   = 200
 	excaliCellH   = 60
-	excaliGapX    = 60
-	excaliGapY    = 120
-	excaliMarginX = 40
-	excaliMarginY = 40
+	excaliGapX    = 100
+	excaliGapY    = 300
+	excaliMarginX = 60
+	excaliMarginY = 60
 )
-
-// excalidrawFile is the top-level Excalidraw JSON structure.
-type excalidrawFile struct {
-	Type     string              `json:"type"`
-	Version  int                 `json:"version"`
-	Source   string              `json:"source"`
-	Elements []excalidrawElement `json:"elements"`
-	AppState map[string]any      `json:"appState"`
-	Files    map[string]any      `json:"files"`
-}
-
-// excalidrawElement represents an Excalidraw element (rectangle, text, arrow).
-type excalidrawElement struct {
-	ID              string             `json:"id"`
-	Type            string             `json:"type"`
-	X               int                `json:"x"`
-	Y               int                `json:"y"`
-	Width           int                `json:"width"`
-	Height          int                `json:"height"`
-	Text            string             `json:"text,omitempty"`
-	FontSize        int                `json:"fontSize,omitempty"`
-	Opacity         int                `json:"opacity,omitempty"`
-	StrokeColor     string             `json:"strokeColor"`
-	BackgroundColor string             `json:"backgroundColor"`
-	FillStyle       string             `json:"fillStyle"`
-	RoundRound      int                `json:"roundness,omitempty"`
-	StartBinding    *excalidrawBinding `json:"startBinding,omitempty"`
-	EndBinding      *excalidrawBinding `json:"endBinding,omitempty"`
-	Points          [][2]int           `json:"points,omitempty"`
-	ContainerID     string             `json:"containerId,omitempty"`
-}
-
-type excalidrawBinding struct {
-	ElementID string  `json:"elementId"`
-	Focus     float64 `json:"focus"`
-	Gap       int     `json:"gap"`
-}
 
 // Excalidraw renders an ArchGraph as Excalidraw JSON.
 // Nodes are arranged in topological layers: root packages at the top,
-// leaf dependencies at the bottom.
+// leaf dependencies at the bottom. Arrows use orthogonal routing.
 func Excalidraw(graph *model.ArchGraph, opts Options) string {
 	vg := PrepareGraph(graph, opts)
 	vg.TransitiveReduce()
 	nodePositions := make(map[string][2]int) // id -> [x, y]
 
-	elements := make([]excalidrawElement, 0)
+	elements := make([]map[string]any, 0)
+	seed := 1000000
+
+	nextSeed := func() int {
+		seed += 7
+		return seed
+	}
 
 	// Build adjacency for topological layering.
 	outgoing := make(map[string][]string)
@@ -158,32 +128,8 @@ func Excalidraw(graph *model.ArchGraph, opts Options) string {
 
 			bgColor := excalidrawBgColor(n.Type)
 
-			elements = append(elements, excalidrawElement{
-				ID:              rectID,
-				Type:            "rectangle",
-				X:               x,
-				Y:               y,
-				Width:           excaliCellW,
-				Height:          excaliCellH,
-				StrokeColor:     "#1e1e1e",
-				BackgroundColor: bgColor,
-				FillStyle:       "solid",
-			})
-
-			elements = append(elements, excalidrawElement{
-				ID:              textID,
-				Type:            "text",
-				X:               x + 10,
-				Y:               y + 20,
-				Width:           excaliCellW - 20,
-				Height:          25,
-				Text:            n.Name,
-				FontSize:        16,
-				StrokeColor:     "#1e1e1e",
-				BackgroundColor: "transparent",
-				FillStyle:       "solid",
-				ContainerID:     rectID,
-			})
+			elements = append(elements, excaliRect(rectID, x, y, excaliCellW, excaliCellH, bgColor, nextSeed()))
+			elements = append(elements, excaliText(textID, x+10, y+20, excaliCellW-20, 25, n.Name, 16, &rectID, nextSeed()))
 
 			// Expand group bounds.
 			b := groupBounds[n.Type]
@@ -207,93 +153,252 @@ func Excalidraw(graph *model.ArchGraph, opts Options) string {
 		}
 	}
 
-	// Add group frame elements (rendered behind nodes in Excalidraw via order).
-	var groupElements []excalidrawElement
+	// Add group frame elements (rendered behind nodes via order).
+	var groupElements []map[string]any
 	for nt, b := range groupBounds {
 		gx := b.minX - groupPad
-		gy := b.minY - groupPad - 24 // extra space for label
+		gy := b.minY - groupPad - 24
 		gw := b.maxX - b.minX + 2*groupPad
 		gh := b.maxY - b.minY + 2*groupPad + 24
 
 		frameID := fmt.Sprintf("group_%s", SanitizeID(string(nt)))
 		labelID := frameID + "_label"
 
-		groupElements = append(groupElements, excalidrawElement{
-			ID:              frameID,
-			Type:            "rectangle",
-			X:               gx,
-			Y:               gy,
-			Width:           gw,
-			Height:          gh,
-			Opacity:         20,
-			StrokeColor:     excalidrawBgColor(nt),
-			BackgroundColor: excalidrawBgColor(nt),
-			FillStyle:       "solid",
-		})
-		groupElements = append(groupElements, excalidrawElement{
-			ID:              labelID,
-			Type:            "text",
-			X:               gx + 8,
-			Y:               gy + 4,
-			Width:           gw - 16,
-			Height:          20,
-			Text:            drawIOGroupLabel(nt),
-			FontSize:        12,
-			StrokeColor:     "#868e96",
-			BackgroundColor: "transparent",
-			FillStyle:       "solid",
-		})
+		frame := excaliRect(frameID, gx, gy, gw, gh, excalidrawBgColor(nt), nextSeed())
+		frame["opacity"] = 20
+		frame["strokeColor"] = excalidrawBgColor(nt)
+		groupElements = append(groupElements, frame)
+
+		groupElements = append(groupElements, excaliText(labelID, gx+8, gy+4, gw-16, 20, drawIOGroupLabel(nt), 12, nil, nextSeed()))
 	}
-	// Prepend groups so they appear behind node elements.
 	if len(groupElements) > 0 {
 		elements = append(groupElements, elements...)
 	}
 
-	// Create arrow elements for edges
+	// Port distribution: sort outgoing edges by target X and incoming
+	// edges by source X, then spread attachment points across node width.
+	type portAssign struct {
+		startFrac, endFrac float64
+		outRank, outTotal  int
+	}
+	portMap := make(map[int]portAssign)
+	edgesBySource := make(map[string][]int)
+	edgesByTarget := make(map[string][]int)
+	for i, e := range vg.Edges {
+		edgesBySource[e.Source] = append(edgesBySource[e.Source], i)
+		edgesByTarget[e.Target] = append(edgesByTarget[e.Target], i)
+	}
+
+	for _, indices := range edgesBySource {
+		sort.Slice(indices, func(a, b int) bool {
+			return nodePositions[vg.Edges[indices[a]].Target][0] <
+				nodePositions[vg.Edges[indices[b]].Target][0]
+		})
+		n := len(indices)
+		for rank, idx := range indices {
+			frac := 0.5
+			if n > 1 {
+				frac = 0.15 + 0.7*float64(rank)/float64(n-1)
+			}
+			pa := portMap[idx]
+			pa.startFrac = frac
+			pa.outRank = rank
+			pa.outTotal = n
+			portMap[idx] = pa
+		}
+	}
+
+	for _, indices := range edgesByTarget {
+		sort.Slice(indices, func(a, b int) bool {
+			return nodePositions[vg.Edges[indices[a]].Source][0] <
+				nodePositions[vg.Edges[indices[b]].Source][0]
+		})
+		n := len(indices)
+		for rank, idx := range indices {
+			frac := 0.5
+			if n > 1 {
+				frac = 0.15 + 0.7*float64(rank)/float64(n-1)
+			}
+			pa := portMap[idx]
+			pa.endFrac = frac
+			portMap[idx] = pa
+		}
+	}
+
+	// Arrows with orthogonal routing and all required Excalidraw properties.
 	for i, e := range vg.Edges {
 		srcPos := nodePositions[e.Source]
 		tgtPos := nodePositions[e.Target]
+		pa := portMap[i]
+
+		startX := float64(srcPos[0]) + pa.startFrac*float64(excaliCellW)
+		startY := float64(srcPos[1] + excaliCellH)
+		endX := float64(tgtPos[0]) + pa.endFrac*float64(excaliCellW)
+		endY := float64(tgtPos[1])
+
+		dx := endX - startX
+		dy := endY - startY
 		arrowID := fmt.Sprintf("arrow_%d", i)
 
-		// Arrow points relative to start position
-		dx := tgtPos[0] - srcPos[0]
-		dy := tgtPos[1] - srcPos[1]
+		var points [][2]float64
+		absDx := dx
+		if absDx < 0 {
+			absDx = -absDx
+		}
+		if absDx < 10 {
+			points = [][2]float64{{0, 0}, {0, dy}}
+		} else {
+			channelDY := 30.0
+			if pa.outTotal > 1 {
+				channelDY = 30 + float64(excaliGapY-60)*float64(pa.outRank)/float64(pa.outTotal-1)
+			}
+			points = [][2]float64{
+				{0, 0},
+				{0, channelDY},
+				{dx, channelDY},
+				{dx, dy},
+			}
+		}
 
-		elements = append(elements, excalidrawElement{
-			ID:              arrowID,
-			Type:            "arrow",
-			X:               srcPos[0] + excaliCellW/2,
-			Y:               srcPos[1] + excaliCellH/2,
-			Width:           dx,
-			Height:          dy,
-			StrokeColor:     "#1e1e1e",
-			BackgroundColor: "transparent",
-			FillStyle:       "solid",
-			Points:          [][2]int{{0, 0}, {dx, dy}},
-			StartBinding: &excalidrawBinding{
-				ElementID: SanitizeID(e.Source),
-				Focus:     0,
-				Gap:       8,
-			},
-			EndBinding: &excalidrawBinding{
-				ElementID: SanitizeID(e.Target),
-				Focus:     0,
-				Gap:       8,
-			},
-		})
+		elements = append(elements, excaliArrow(arrowID, startX, startY, points, nextSeed()))
 	}
 
-	file := excalidrawFile{
-		Type:     "excalidraw",
-		Version:  2,
-		Source:   "code-to-arch-mcp",
-		Elements: elements,
-		AppState: map[string]any{"viewBackgroundColor": "#ffffff"},
-		Files:    map[string]any{},
+	file := map[string]any{
+		"type":     "excalidraw",
+		"version":  2,
+		"source":   "code-to-arch-mcp",
+		"elements": elements,
+		"appState": map[string]any{"viewBackgroundColor": "#ffffff"},
+		"files":    map[string]any{},
 	}
 
 	data, _ := json.MarshalIndent(file, "", "  ")
 	return string(data)
+}
+
+// excaliRect creates a complete Excalidraw rectangle element.
+func excaliRect(id string, x, y, w, h int, bgColor string, seed int) map[string]any {
+	return map[string]any{
+		"id":              id,
+		"type":            "rectangle",
+		"x":               x,
+		"y":               y,
+		"width":           w,
+		"height":          h,
+		"angle":           0,
+		"strokeColor":     "#1e1e1e",
+		"backgroundColor": bgColor,
+		"fillStyle":       "solid",
+		"strokeWidth":     2,
+		"strokeStyle":     "solid",
+		"roughness":       1,
+		"opacity":         100,
+		"groupIds":        []string{},
+		"frameId":         nil,
+		"roundness":       map[string]int{"type": 3},
+		"seed":            seed,
+		"version":         1,
+		"versionNonce":    seed + 1,
+		"isDeleted":       false,
+		"boundElements":   nil,
+		"updated":         1708000000000,
+		"link":            nil,
+		"locked":          false,
+	}
+}
+
+// excaliText creates a complete Excalidraw text element.
+func excaliText(id string, x, y, w, h int, text string, fontSize int, containerID *string, seed int) map[string]any {
+	return map[string]any{
+		"id":              id,
+		"type":            "text",
+		"x":               x,
+		"y":               y,
+		"width":           w,
+		"height":          h,
+		"angle":           0,
+		"strokeColor":     "#1e1e1e",
+		"backgroundColor": "transparent",
+		"fillStyle":       "solid",
+		"strokeWidth":     2,
+		"strokeStyle":     "solid",
+		"roughness":       1,
+		"opacity":         100,
+		"groupIds":        []string{},
+		"frameId":         nil,
+		"roundness":       nil,
+		"seed":            seed,
+		"version":         1,
+		"versionNonce":    seed + 1,
+		"isDeleted":       false,
+		"boundElements":   nil,
+		"updated":         1708000000000,
+		"link":            nil,
+		"locked":          false,
+		"text":            text,
+		"fontSize":        fontSize,
+		"fontFamily":      1,
+		"textAlign":       "center",
+		"verticalAlign":   "middle",
+		"containerId":     containerID,
+		"originalText":    text,
+		"lineHeight":      1.25,
+	}
+}
+
+// excaliArrow creates a complete Excalidraw arrow element with all
+// required properties so Excalidraw doesn't re-normalize the path.
+func excaliArrow(id string, x, y float64, points [][2]float64, seed int) map[string]any {
+	// Bounding box from points.
+	var minX, maxX, minY, maxY float64
+	for _, p := range points {
+		if p[0] < minX {
+			minX = p[0]
+		}
+		if p[0] > maxX {
+			maxX = p[0]
+		}
+		if p[1] < minY {
+			minY = p[1]
+		}
+		if p[1] > maxY {
+			maxY = p[1]
+		}
+	}
+
+	return map[string]any{
+		"id":                 id,
+		"type":               "arrow",
+		"x":                  x,
+		"y":                  y,
+		"width":              maxX - minX,
+		"height":             maxY - minY,
+		"angle":              0,
+		"strokeColor":        "#868e96",
+		"backgroundColor":    "transparent",
+		"fillStyle":          "solid",
+		"strokeWidth":        1,
+		"strokeStyle":        "solid",
+		"roughness":          0,
+		"opacity":            100,
+		"groupIds":           []string{},
+		"frameId":            nil,
+		"roundness":          map[string]int{"type": 2},
+		"seed":               seed,
+		"version":            1,
+		"versionNonce":       seed + 1,
+		"isDeleted":          false,
+		"boundElements":      nil,
+		"updated":            1708000000000,
+		"link":               nil,
+		"locked":             false,
+		"points":             points,
+		"lastCommittedPoint": nil,
+		"startBinding":       nil,
+		"endBinding":         nil,
+		"startArrowhead":     nil,
+		"endArrowhead":       "arrow",
+	}
 }
 
 func excalidrawBgColor(t model.NodeType) string {

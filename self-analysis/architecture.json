@@ -1,0 +1,264 @@
+{
+  "edges": [
+    {
+      "label": "github.com/olgasafonova/code-to-arch-mcp/tools",
+      "source": "pkg:code-to-arch/main",
+      "target": "pkg:tools/tools",
+      "type": "dependency"
+    },
+    {
+      "label": "github.com/olgasafonova/code-to-arch-mcp/tracing",
+      "source": "pkg:code-to-arch/main",
+      "target": "pkg:tracing/tracing",
+      "type": "dependency"
+    },
+    {
+      "label": "github.com/olgasafonova/code-to-arch-mcp/internal/model",
+      "source": "pkg:detector/detector",
+      "target": "pkg:model/model",
+      "type": "dependency"
+    },
+    {
+      "label": "github.com/olgasafonova/code-to-arch-mcp/internal/analyzer/common",
+      "source": "pkg:golang/golang",
+      "target": "pkg:common/common",
+      "type": "dependency"
+    },
+    {
+      "label": "github.com/olgasafonova/code-to-arch-mcp/internal/model",
+      "source": "pkg:golang/golang",
+      "target": "pkg:model/model",
+      "type": "dependency"
+    },
+    {
+      "label": "github.com/olgasafonova/code-to-arch-mcp/internal/scanner",
+      "source": "pkg:golang/golang",
+      "target": "pkg:scanner/scanner",
+      "type": "dependency"
+    },
+    {
+      "label": "github.com/olgasafonova/code-to-arch-mcp/internal/analyzer/common",
+      "source": "pkg:typescript/typescript",
+      "target": "pkg:common/common",
+      "type": "dependency"
+    },
+    {
+      "label": "github.com/olgasafonova/code-to-arch-mcp/internal/model",
+      "source": "pkg:typescript/typescript",
+      "target": "pkg:model/model",
+      "type": "dependency"
+    },
+    {
+      "label": "github.com/olgasafonova/code-to-arch-mcp/internal/scanner",
+      "source": "pkg:typescript/typescript",
+      "target": "pkg:scanner/scanner",
+      "type": "dependency"
+    },
+    {
+      "label": "github.com/olgasafonova/code-to-arch-mcp/internal/model",
+      "source": "pkg:common/common",
+      "target": "pkg:model/model",
+      "type": "dependency"
+    },
+    {
+      "label": "github.com/olgasafonova/code-to-arch-mcp/internal/model",
+      "source": "pkg:drift/drift",
+      "target": "pkg:model/model",
+      "type": "dependency"
+    },
+    {
+      "label": "github.com/olgasafonova/code-to-arch-mcp/internal/model",
+      "source": "pkg:render/render",
+      "target": "pkg:model/model",
+      "type": "dependency"
+    },
+    {
+      "label": "github.com/olgasafonova/code-to-arch-mcp/internal/model",
+      "source": "pkg:scanner/scanner",
+      "target": "pkg:model/model",
+      "type": "dependency"
+    },
+    {
+      "label": "github.com/olgasafonova/code-to-arch-mcp/internal/analyzer/common",
+      "source": "pkg:python/python",
+      "target": "pkg:common/common",
+      "type": "dependency"
+    },
+    {
+      "label": "github.com/olgasafonova/code-to-arch-mcp/internal/model",
+      "source": "pkg:python/python",
+      "target": "pkg:model/model",
+      "type": "dependency"
+    },
+    {
+      "label": "github.com/olgasafonova/code-to-arch-mcp/internal/scanner",
+      "source": "pkg:python/python",
+      "target": "pkg:scanner/scanner",
+      "type": "dependency"
+    },
+    {
+      "label": "github.com/olgasafonova/code-to-arch-mcp/internal/analyzer/golang",
+      "source": "pkg:tools/tools",
+      "target": "pkg:golang/golang",
+      "type": "dependency"
+    },
+    {
+      "label": "github.com/olgasafonova/code-to-arch-mcp/internal/analyzer/python",
+      "source": "pkg:tools/tools",
+      "target": "pkg:python/python",
+      "type": "dependency"
+    },
+    {
+      "label": "github.com/olgasafonova/code-to-arch-mcp/internal/analyzer/typescript",
+      "source": "pkg:tools/tools",
+      "target": "pkg:typescript/typescript",
+      "type": "dependency"
+    },
+    {
+      "label": "github.com/olgasafonova/code-to-arch-mcp/internal/detector",
+      "source": "pkg:tools/tools",
+      "target": "pkg:detector/detector",
+      "type": "dependency"
+    },
+    {
+      "label": "github.com/olgasafonova/code-to-arch-mcp/internal/drift",
+      "source": "pkg:tools/tools",
+      "target": "pkg:drift/drift",
+      "type": "dependency"
+    },
+    {
+      "label": "github.com/olgasafonova/code-to-arch-mcp/internal/infra",
+      "source": "pkg:tools/tools",
+      "target": "pkg:infra/infra",
+      "type": "dependency"
+    },
+    {
+      "label": "github.com/olgasafonova/code-to-arch-mcp/internal/model",
+      "source": "pkg:tools/tools",
+      "target": "pkg:model/model",
+      "type": "dependency"
+    },
+    {
+      "label": "github.com/olgasafonova/code-to-arch-mcp/internal/render",
+      "source": "pkg:tools/tools",
+      "target": "pkg:render/render",
+      "type": "dependency"
+    },
+    {
+      "label": "github.com/olgasafonova/code-to-arch-mcp/internal/safepath",
+      "source": "pkg:tools/tools",
+      "target": "pkg:safepath/safepath",
+      "type": "dependency"
+    },
+    {
+      "label": "github.com/olgasafonova/code-to-arch-mcp/internal/scanner",
+      "source": "pkg:tools/tools",
+      "target": "pkg:scanner/scanner",
+      "type": "dependency"
+    }
+  ],
+  "nodes": [
+    {
+      "id": "pkg:code-to-arch/main",
+      "language": "go",
+      "name": "main",
+      "path": "/Users/olgasafonova/Projects/code-to-arch-mcp/cmd/code-to-arch",
+      "type": "package"
+    },
+    {
+      "id": "pkg:common/common",
+      "language": "go",
+      "name": "common",
+      "path": "/Users/olgasafonova/Projects/code-to-arch-mcp/internal/analyzer/common",
+      "type": "package"
+    },
+    {
+      "id": "pkg:detector/detector",
+      "language": "go",
+      "name": "detector",
+      "path": "/Users/olgasafonova/Projects/code-to-arch-mcp/internal/detector",
+      "type": "package"
+    },
+    {
+      "id": "pkg:drift/drift",
+      "language": "go",
+      "name": "drift",
+      "path": "/Users/olgasafonova/Projects/code-to-arch-mcp/internal/drift",
+      "type": "package"
+    },
+    {
+      "id": "pkg:golang/golang",
+      "language": "go",
+      "name": "golang",
+      "path": "/Users/olgasafonova/Projects/code-to-arch-mcp/internal/analyzer/golang",
+      "type": "package"
+    },
+    {
+      "id": "pkg:infra/infra",
+      "language": "go",
+      "name": "infra",
+      "path": "/Users/olgasafonova/Projects/code-to-arch-mcp/internal/infra",
+      "type": "package"
+    },
+    {
+      "id": "pkg:model/model",
+      "language": "go",
+      "name": "model",
+      "path": "/Users/olgasafonova/Projects/code-to-arch-mcp/internal/model",
+      "type": "package"
+    },
+    {
+      "id": "pkg:python/python",
+      "language": "go",
+      "name": "python",
+      "path": "/Users/olgasafonova/Projects/code-to-arch-mcp/internal/analyzer/python",
+      "type": "package"
+    },
+    {
+      "id": "pkg:render/render",
+      "language": "go",
+      "name": "render",
+      "path": "/Users/olgasafonova/Projects/code-to-arch-mcp/internal/render",
+      "type": "package"
+    },
+    {
+      "id": "pkg:safepath/safepath",
+      "language": "go",
+      "name": "safepath",
+      "path": "/Users/olgasafonova/Projects/code-to-arch-mcp/internal/safepath",
+      "type": "package"
+    },
+    {
+      "id": "pkg:scanner/scanner",
+      "language": "go",
+      "name": "scanner",
+      "path": "/Users/olgasafonova/Projects/code-to-arch-mcp/internal/scanner",
+      "type": "package"
+    },
+    {
+      "id": "pkg:tools/tools",
+      "language": "go",
+      "name": "tools",
+      "path": "/Users/olgasafonova/Projects/code-to-arch-mcp/tools",
+      "type": "package"
+    },
+    {
+      "id": "pkg:tracing/tracing",
+      "language": "go",
+      "name": "tracing",
+      "path": "/Users/olgasafonova/Projects/code-to-arch-mcp/tracing",
+      "type": "package"
+    },
+    {
+      "id": "pkg:typescript/typescript",
+      "language": "go",
+      "name": "typescript",
+      "path": "/Users/olgasafonova/Projects/code-to-arch-mcp/internal/analyzer/typescript",
+      "type": "package"
+    }
+  ],
+  "root_path": "/Users/olgasafonova/Projects/code-to-arch-mcp",
+  "title": "Code-to-Arch MCP - Self Analysis",
+  "topology": "unknown",
+  "view_level": "component"
+}
