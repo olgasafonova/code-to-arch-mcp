@@ -250,6 +250,138 @@ export default App;
 	}
 }
 
+func TestAnalyze_NestJSController(t *testing.T) {
+	dir := t.TempDir()
+	path := writeTSFile(t, dir, "users.controller.ts", `import { Controller, Get, Post } from '@nestjs/common';
+
+@Controller('/users')
+export class UsersController {
+  @Get()
+  findAll() {
+    return [];
+  }
+
+  @Post()
+  create() {
+    return {};
+  }
+}
+`)
+
+	a := New()
+	nodes, _, err := a.Analyze(path)
+	if err != nil {
+		t.Fatalf("Analyze failed: %v", err)
+	}
+
+	endpointCount := 0
+	methods := map[string]bool{}
+	for _, n := range nodes {
+		if n.Type == model.NodeEndpoint {
+			endpointCount++
+			methods[n.Properties["method"]] = true
+			if n.Properties["framework"] != "nestjs" {
+				t.Fatalf("expected framework nestjs, got %s", n.Properties["framework"])
+			}
+		}
+	}
+	if endpointCount != 2 {
+		t.Fatalf("expected 2 endpoints, got %d", endpointCount)
+	}
+	if !methods["get"] || !methods["post"] {
+		t.Fatalf("expected get and post methods, got %v", methods)
+	}
+}
+
+func TestAnalyze_NestJSControllerPath(t *testing.T) {
+	dir := t.TempDir()
+	path := writeTSFile(t, dir, "items.controller.ts", `import { Controller, Get, Post, Delete } from '@nestjs/common';
+
+@Controller('/items')
+export class ItemsController {
+  @Get(':id')
+  findOne() {}
+
+  @Post('batch')
+  createBatch() {}
+
+  @Delete(':id')
+  remove() {}
+}
+`)
+
+	a := New()
+	nodes, _, err := a.Analyze(path)
+	if err != nil {
+		t.Fatalf("Analyze failed: %v", err)
+	}
+
+	routes := map[string]string{}
+	for _, n := range nodes {
+		if n.Type == model.NodeEndpoint {
+			routes[n.Properties["method"]] = n.Properties["route"]
+		}
+	}
+
+	expected := map[string]string{
+		"get":    "/items/:id",
+		"post":   "/items/batch",
+		"delete": "/items/:id",
+	}
+
+	for method, wantRoute := range expected {
+		gotRoute, ok := routes[method]
+		if !ok {
+			t.Fatalf("missing %s endpoint", method)
+		}
+		if gotRoute != wantRoute {
+			t.Fatalf("expected %s route %q, got %q", method, wantRoute, gotRoute)
+		}
+	}
+}
+
+func TestAnalyze_NestJSInjectable(t *testing.T) {
+	dir := t.TempDir()
+	path := writeTSFile(t, dir, "users.service.ts", `import { Injectable } from '@nestjs/common';
+
+@Injectable()
+export class UsersService {
+  findAll() {
+    return [];
+  }
+}
+`)
+
+	a := New()
+	nodes, edges, err := a.Analyze(path)
+	if err != nil {
+		t.Fatalf("Analyze failed: %v", err)
+	}
+
+	foundInjectable := false
+	for _, n := range nodes {
+		if n.Properties != nil && n.Properties["injectable"] == "true" {
+			foundInjectable = true
+			if n.Name != "UsersService" {
+				t.Fatalf("expected injectable name UsersService, got %s", n.Name)
+			}
+		}
+	}
+	if !foundInjectable {
+		t.Fatal("expected to find @Injectable service node")
+	}
+
+	foundProvides := false
+	for _, e := range edges {
+		if e.Label == "provides" {
+			foundProvides = true
+		}
+	}
+	if !foundProvides {
+		t.Fatal("expected 'provides' edge for injectable service")
+	}
+}
+
 func TestAnalyze_InvalidFile(t *testing.T) {
 	dir := t.TempDir()
 	path := writeTSFile(t, dir, "bad.ts", `}{}{not valid anything at all {{{{`)
