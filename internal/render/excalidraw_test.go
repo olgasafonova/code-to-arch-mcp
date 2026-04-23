@@ -32,7 +32,9 @@ func TestExcalidraw_HasElements(t *testing.T) {
 	out := Excalidraw(graph, Options{ViewLevel: ViewContainer})
 
 	var parsed map[string]any
-	json.Unmarshal([]byte(out), &parsed)
+	if err := json.Unmarshal([]byte(out), &parsed); err != nil {
+		t.Fatalf("Excalidraw output is not valid JSON: %v", err)
+	}
 
 	elements, ok := parsed["elements"].([]any)
 	if !ok {
@@ -87,7 +89,9 @@ func TestExcalidraw_TopologicalLayout(t *testing.T) {
 	out := Excalidraw(graph, Options{ViewLevel: ViewComponent})
 
 	var parsed map[string]any
-	json.Unmarshal([]byte(out), &parsed)
+	if err := json.Unmarshal([]byte(out), &parsed); err != nil {
+		t.Fatalf("Excalidraw output is not valid JSON: %v", err)
+	}
 
 	elements := parsed["elements"].([]any)
 

@@ -63,8 +63,10 @@ func CheckoutRef(ctx context.Context, repoPath, ref string) (worktreePath string
 	cleanup = func() {
 		rmCmd := exec.Command("git", "worktree", "remove", "--force", worktreePath)
 		rmCmd.Dir = repoPath
-		rmCmd.Run()
-		os.RemoveAll(tmpDir)
+		// Best-effort cleanup: if the worktree removal fails (already gone,
+		// locked, etc.) we still proceed to drop the temp dir.
+		_ = rmCmd.Run()
+		_ = os.RemoveAll(tmpDir)
 	}
 
 	return worktreePath, cleanup, nil
