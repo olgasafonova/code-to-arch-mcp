@@ -26,3 +26,6 @@ Thumbs.db
 .dolt/
 *.db
 .beads-credential-key
+
+# Playwright MCP browser cache
+.playwright-mcp/
