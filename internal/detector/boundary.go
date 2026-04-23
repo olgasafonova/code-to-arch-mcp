@@ -39,6 +39,8 @@ func DetectBoundaries(rootPath string) (*BoundaryResult, error) {
 	var cmdDirs []string
 	hasGoWork := false
 	hasNxJSON := false
+	hasTurboJSON := false
+	hasRushJSON := false
 	hasPnpmWorkspace := false
 	hasDockerCompose := false
 	hasK8sManifests := false
@@ -76,6 +78,10 @@ func DetectBoundaries(rootPath string) (*BoundaryResult, error) {
 			packageJSONs = append(packageJSONs, rel)
 		case "nx.json":
 			hasNxJSON = true
+		case "turbo.json":
+			hasTurboJSON = true
+		case "rush.json":
+			hasRushJSON = true
 		case "pnpm-workspace.yaml":
 			hasPnpmWorkspace = true
 		case "Dockerfile", "dockerfile":
@@ -112,7 +118,7 @@ func DetectBoundaries(rootPath string) (*BoundaryResult, error) {
 
 	result.Topology = inferTopology(
 		len(goMods), len(packageJSONs), len(dockerfiles), len(cmdDirs), totalProjectMarkers,
-		hasGoWork, hasNxJSON, hasPnpmWorkspace, hasDockerCompose, hasK8sManifests,
+		hasGoWork, hasNxJSON, hasTurboJSON, hasRushJSON, hasPnpmWorkspace, hasDockerCompose, hasK8sManifests,
 	)
 
 	// Build boundary list
@@ -240,10 +246,10 @@ func DetectBoundaries(rootPath string) (*BoundaryResult, error) {
 
 func inferTopology(
 	goModCount, pkgJSONCount, dockerfileCount, cmdCount, totalProjectMarkers int,
-	hasGoWork, hasNx, hasPnpmWorkspace, hasDockerCompose, hasK8s bool,
+	hasGoWork, hasNx, hasTurbo, hasRush, hasPnpmWorkspace, hasDockerCompose, hasK8s bool,
 ) model.TopologyType {
-	// Monorepo signals
-	if hasGoWork || hasNx || hasPnpmWorkspace {
+	// Monorepo signals: workspace-level config files
+	if hasGoWork || hasNx || hasTurbo || hasRush || hasPnpmWorkspace {
 		return model.TopologyMonorepo
 	}
 
@@ -252,8 +258,13 @@ func inferTopology(
 		return model.TopologyMonorepo
 	}
 
-	// Multiple Dockerfiles or k8s manifests + docker-compose = microservices
+	// Multiple Dockerfiles with orchestration = microservices
 	if dockerfileCount > 1 && (hasDockerCompose || hasK8s) {
+		return model.TopologyMicroservice
+	}
+
+	// 3+ Dockerfiles without orchestration still indicates microservices
+	if dockerfileCount > 2 {
 		return model.TopologyMicroservice
 	}
 

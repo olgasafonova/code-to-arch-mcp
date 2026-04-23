@@ -143,6 +143,55 @@ func TestDetectBoundaries_NxMonorepo(t *testing.T) {
 	}
 }
 
+func TestDetectBoundaries_TurborepoMonorepo(t *testing.T) {
+	dir := t.TempDir()
+	writeFile(t, dir, "package.json", `{"name":"root"}`)
+	writeFile(t, dir, "turbo.json", `{"pipeline":{}}`)
+	writeFile(t, dir, "apps/web/package.json", `{"name":"web"}`)
+
+	result, err := DetectBoundaries(dir)
+	if err != nil {
+		t.Fatalf("DetectBoundaries failed: %v", err)
+	}
+
+	if result.Topology != model.TopologyMonorepo {
+		t.Fatalf("expected monorepo for Turborepo project, got %s", result.Topology)
+	}
+}
+
+func TestDetectBoundaries_RushMonorepo(t *testing.T) {
+	dir := t.TempDir()
+	writeFile(t, dir, "package.json", `{"name":"root"}`)
+	writeFile(t, dir, "rush.json", `{"rushVersion":"5.0.0"}`)
+	writeFile(t, dir, "apps/web/package.json", `{"name":"web"}`)
+
+	result, err := DetectBoundaries(dir)
+	if err != nil {
+		t.Fatalf("DetectBoundaries failed: %v", err)
+	}
+
+	if result.Topology != model.TopologyMonorepo {
+		t.Fatalf("expected monorepo for Rush project, got %s", result.Topology)
+	}
+}
+
+func TestDetectBoundaries_MicroserviceWithoutOrchestration(t *testing.T) {
+	dir := t.TempDir()
+	writeFile(t, dir, "go.mod", "module example.com/app\n")
+	writeFile(t, dir, "svc-a/Dockerfile", "FROM golang:1.22\n")
+	writeFile(t, dir, "svc-b/Dockerfile", "FROM golang:1.22\n")
+	writeFile(t, dir, "svc-c/Dockerfile", "FROM golang:1.22\n")
+
+	result, err := DetectBoundaries(dir)
+	if err != nil {
+		t.Fatalf("DetectBoundaries failed: %v", err)
+	}
+
+	if result.Topology != model.TopologyMicroservice {
+		t.Fatalf("expected microservice for 3+ Dockerfiles without orchestration, got %s", result.Topology)
+	}
+}
+
 func TestDetectBoundaries_EmptyDir(t *testing.T) {
 	dir := t.TempDir()
 
