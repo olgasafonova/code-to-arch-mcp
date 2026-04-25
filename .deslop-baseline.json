@@ -1,0 +1,58 @@
+{
+  "schema_version": 1,
+  "generated_at": "2026-04-25T13:33:48Z",
+  "deslop_version": "2.1.0",
+  "scores": {
+    "file_health": 75.0,
+    "test_coverage": 88.6,
+    "secret_detection": 100.0,
+    "todo_debt": 100.0,
+    "dependency_health": 100.0,
+    "structural_quality": 100.0,
+    "overall": 93.9
+  },
+  "findings": [
+    {
+      "detector": "file_health",
+      "severity": "high",
+      "key": "tools/handlers.go",
+      "summary": "tools/handlers.go (1,186 LOC)"
+    },
+    {
+      "detector": "file_health",
+      "severity": "warning",
+      "key": "internal/analyzer/python/analyzer.go",
+      "summary": "internal/analyzer/python/analyzer.go (513 LOC)"
+    },
+    {
+      "detector": "file_health",
+      "severity": "warning",
+      "key": "internal/analyzer/typescript/analyzer.go",
+      "summary": "internal/analyzer/typescript/analyzer.go (665 LOC)"
+    },
+    {
+      "detector": "test_coverage",
+      "severity": "warning",
+      "key": "internal/detector/rules.go",
+      "summary": "internal/detector/rules.go has no test file"
+    },
+    {
+      "detector": "test_coverage",
+      "severity": "warning",
+      "key": "internal/scanner/analyzer.go",
+      "summary": "internal/scanner/analyzer.go has no test file"
+    },
+    {
+      "detector": "test_coverage",
+      "severity": "warning",
+      "key": "tools/handlers.go",
+      "summary": "tools/handlers.go has no test file"
+    },
+    {
+      "detector": "test_coverage",
+      "severity": "warning",
+      "key": "tracing/tracing.go",
+      "summary": "tracing/tracing.go has no test file"
+    }
+  ]
+}
