@@ -79,6 +79,8 @@ func (h *HandlerRegistry) RegisterAll(server *mcp.Server) {
 			register(h, server, spec, h.archDiff)
 		case "ArchDrift":
 			register(h, server, spec, h.archDrift)
+		case "ArchDriftExplain":
+			register(h, server, spec, h.archDriftExplain)
 		case "ArchValidate":
 			register(h, server, spec, h.archValidate)
 		case "ArchHistory":
@@ -776,6 +778,34 @@ func (h *HandlerRegistry) archDrift(ctx context.Context, args ArchDriftArgs) (*m
 	report.BaseRef = args.BaseRef
 	report.CompareRef = headRef
 	return report, nil
+}
+
+type ArchDriftExplainArgs struct {
+	Path    string `json:"path"`
+	Repo    string `json:"repo,omitempty"`
+	BaseRef string `json:"base_ref"`
+	HeadRef string `json:"head_ref,omitempty"`
+}
+
+type ArchDriftExplainResult struct {
+	Narrative string            `json:"narrative"`
+	Report    *model.DiffReport `json:"report"`
+}
+
+func (h *HandlerRegistry) archDriftExplain(ctx context.Context, args ArchDriftExplainArgs) (*ArchDriftExplainResult, error) {
+	report, err := h.archDrift(ctx, ArchDriftArgs{
+		Path:    args.Path,
+		Repo:    args.Repo,
+		BaseRef: args.BaseRef,
+		HeadRef: args.HeadRef,
+	})
+	if err != nil {
+		return nil, err
+	}
+	return &ArchDriftExplainResult{
+		Narrative: drift.Narrate(report),
+		Report:    report,
+	}, nil
 }
 
 type ArchValidateArgs struct {

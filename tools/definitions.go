@@ -154,6 +154,21 @@ FAILS WHEN: directory is not a git repository, specified git ref doesn't exist (
 		Idempotent: true,
 	},
 	{
+		Name:   "arch_drift_explain",
+		Method: "ArchDriftExplain",
+		Title:  "Explain Drift in Plain English",
+		Description: `Produce a 2-5 sentence narrative summary of architectural drift between two git refs.
+USE WHEN the user wants a shareable plain-English drift summary for a PR description, standup, or changelog,
+like "summarize what changed between v1.0 and main" or "explain the drift from last release."
+For the structured JSON diff alone, use arch_drift instead.
+Returns both the narrative paragraph and the underlying drift report.
+WHY: Templates the structured diff into prose grouped by node type, change kind, and severity. No LLM call; output is deterministic.
+FAILS WHEN: directory is not a git repository, specified git ref doesn't exist.`,
+		Category:   "drift",
+		ReadOnly:   true,
+		Idempotent: true,
+	},
+	{
 		Name:   "arch_validate",
 		Method: "ArchValidate",
 		Title:  "Validate Architecture Rules",

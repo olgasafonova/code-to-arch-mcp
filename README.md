@@ -13,6 +13,7 @@ Most teams know they should review architecture regularly, check for circular de
 - This tool generates architecture from code, so diagrams are always current. No one has to maintain them.
 - `arch_validate` turns "check for circular dependencies" from a retro action item into a one-prompt task.
 - `arch_drift` compares architecture between any two git refs. It catches structural changes that code review misses: a new database dependency, a service that quietly became a monolith, an endpoint that bypasses the API gateway.
+- `arch_drift_explain` wraps that diff in a 2-5 sentence narrative you can paste straight into a PR description, standup channel, or release note. No LLM call; pure templating from the structured diff.
 
 <!-- TODO: Add demo GIF showing arch_scan + arch_generate on a real project -->
 
@@ -24,7 +25,7 @@ Most teams know they should review architecture regularly, check for circular de
 
 **Edges** represent relationships with confidence scores: dependencies (0.9), endpoint registrations (0.85), infrastructure links (0.8), HTTP client calls (0.7). Confidence lets consumers filter by reliability; direct AST-resolved imports score higher than heuristic matches.
 
-[MCP](https://modelcontextprotocol.io/) (Model Context Protocol) lets AI assistants call external tools. This server gives your AI assistant 18 architecture analysis tools.
+[MCP](https://modelcontextprotocol.io/) (Model Context Protocol) lets AI assistants call external tools. This server gives your AI assistant 19 architecture analysis tools.
 
 ## What you get
 
@@ -82,11 +83,12 @@ Once configured, ask your LLM:
 | `arch_generate` | Generate a diagram (Mermaid, PlantUML, C4, Structurizr, JSON, draw.io, Excalidraw, HTML, forcegraph) |
 | `arch_blast_radius` | Find every node that transitively depends on a target — answers "if I change X, what else needs review?" |
 | `arch_drift` | Compare architecture between two branches, tags, or commits |
+| `arch_drift_explain` | Compare two refs and return a 2-5 sentence narrative summary plus the structured diff — paste-ready for PR descriptions |
 | `arch_dataflow` | Trace data flow from endpoints to data stores with structured process traces |
 | `arch_validate` | Check for circular dependencies, orphan nodes, and layering violations |
 | `arch_recommend` | Produce prioritized architecture improvement recommendations |
 
-### All 18 tools
+### All 19 tools
 
 | Tool | Category | What it does |
 |------|----------|-------------|
@@ -100,6 +102,7 @@ Once configured, ask your LLM:
 | `arch_generate` | diagram | Generate a diagram in 9 formats |
 | `arch_diff` | drift | Compare current architecture against a saved baseline |
 | `arch_drift` | drift | Compare architecture between two git refs |
+| `arch_drift_explain` | drift | Narrative summary of drift between two git refs (paste-ready prose) |
 | `arch_validate` | validation | Check for circular dependencies, orphan nodes, and layering violations |
 | `arch_metrics` | validation | Compute coupling, instability, and dependency depth scores |
 | `arch_recommend` | validation | Prioritized improvement recommendations from metrics + violations + patterns |
