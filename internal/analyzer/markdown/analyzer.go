@@ -49,16 +49,44 @@ var (
 	fenceOpenRe = regexp.MustCompile("(?m)^[ \\t]*(```+|~~~+)[^\\n]*$")
 )
 
+// maxFileBytes caps how much of any one markdown file we read. Vaults
+// occasionally contain pasted full-text articles or image-embedded notes that
+// can balloon to multi-MB; reading them entirely into memory and then running
+// regexes over them stalls the scanner with no useful link signal in return.
+const maxFileBytes = 5 * 1024 * 1024 // 5 MB
+
 // Analyze parses a markdown file and emits a note node + link edges.
 func (a *Analyzer) Analyze(path string) ([]*model.Node, []*model.Edge, error) {
-	src, err := os.ReadFile(path) //nolint:gosec // G304: path is from filesystem walker, not user input
+	info, err := os.Stat(path)
 	if err != nil {
-		return nil, nil, fmt.Errorf("reading %s: %w", path, err)
+		return nil, nil, fmt.Errorf("stat %s: %w", path, err)
 	}
 
 	dir := filepath.Base(filepath.Dir(path))
 	stem := strings.TrimSuffix(filepath.Base(path), filepath.Ext(path))
 	noteID := fmt.Sprintf("note:%s/%s", dir, stem)
+
+	if info.Size() > maxFileBytes {
+		// Emit the note node so the file is visible in the graph but skip
+		// link extraction. Properties record the reason for downstream tools.
+		return []*model.Node{{
+			ID:       noteID,
+			Name:     stem,
+			Type:     model.NodeNote,
+			Language: "markdown",
+			Path:     path,
+			Properties: map[string]string{
+				"skipped":      "size",
+				"size_bytes":   fmt.Sprintf("%d", info.Size()),
+				"max_capacity": fmt.Sprintf("%d", maxFileBytes),
+			},
+		}}, nil, nil
+	}
+
+	src, err := os.ReadFile(path) //nolint:gosec // G304: path is from filesystem walker, not user input
+	if err != nil {
+		return nil, nil, fmt.Errorf("reading %s: %w", path, err)
+	}
 
 	nodes := []*model.Node{
 		{

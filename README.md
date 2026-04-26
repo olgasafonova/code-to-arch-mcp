@@ -1,6 +1,6 @@
 # Code to Arch MCP
 
-An MCP server that reverse-engineers architecture from source code. Point it at any codebase; it returns services, databases, queues, endpoints, and their relationships as a structured graph. Generate diagrams in 7 formats. Detect drift between any two branches, tags, or commits. Validate architecture rules. Track how the system evolves over time.
+An MCP server that reverse-engineers architecture from source code. Point it at any codebase; it returns services, databases, queues, endpoints, and their relationships as a structured graph. Also works on markdown directories (Obsidian vaults, doc trees) — wiki-links and relative `.md` links become dependency edges. Generate diagrams in 9 formats including a self-contained D3 force-directed page for hub-spoke graphs. Detect drift between any two branches, tags, or commits. Validate architecture rules. Track how the system evolves over time.
 
 No configuration files, no manual diagramming. Static analysis builds the architecture model directly from your code.
 
@@ -18,13 +18,13 @@ Most teams know they should review architecture regularly, check for circular de
 
 ## What it does
 
-**Parses source files with language-specific analyzers** (Go via `go/ast`, TypeScript and Python via tree-sitter) and builds an architecture graph of nodes and edges.
+**Parses source files with language-specific analyzers** (Go via `go/ast`, TypeScript and Python via tree-sitter, markdown via regex-based link extraction) and builds an architecture graph of nodes and edges.
 
-**Nodes** represent components: services, modules, packages, databases, message queues, caches, external APIs, HTTP endpoints.
+**Nodes** represent components: services, modules, packages, databases, message queues, caches, external APIs, HTTP endpoints, and notes (markdown files).
 
 **Edges** represent relationships with confidence scores: dependencies (0.9), endpoint registrations (0.85), infrastructure links (0.8), HTTP client calls (0.7). Confidence lets consumers filter by reliability; direct AST-resolved imports score higher than heuristic matches.
 
-[MCP](https://modelcontextprotocol.io/) (Model Context Protocol) lets AI assistants call external tools. This server gives your AI assistant 14 architecture analysis tools.
+[MCP](https://modelcontextprotocol.io/) (Model Context Protocol) lets AI assistants call external tools. This server gives your AI assistant 18 architecture analysis tools.
 
 ## What you get
 
@@ -68,6 +68,9 @@ Once configured, ask your LLM:
 - "Show me data flow traces from API endpoints to databases"
 - "Save this architecture as our v2.0 baseline"
 - "Scan this monorepo but limit to 500 files and skip test files"
+- "Scan my Obsidian vault at ~/notes and find orphan notes"
+- "Render my AI-Knowledge directory as a force-directed graph showing hubs at degree>=10"
+- "If I change ~/repo/internal/scanner what else needs review?" (uses arch_blast_radius)
 
 ## Tools
 
@@ -75,24 +78,26 @@ Once configured, ask your LLM:
 
 | Tool | What it does |
 |------|-------------|
-| `arch_scan` | Scan a codebase and return the full architecture graph with confidence-scored edges |
-| `arch_generate` | Generate a diagram (Mermaid, PlantUML, C4, Structurizr, JSON, draw.io, Excalidraw) |
+| `arch_scan` | Scan a codebase or markdown directory and return the full architecture graph with confidence-scored edges |
+| `arch_generate` | Generate a diagram (Mermaid, PlantUML, C4, Structurizr, JSON, draw.io, Excalidraw, HTML, forcegraph) |
+| `arch_blast_radius` | Find every node that transitively depends on a target — answers "if I change X, what else needs review?" |
 | `arch_drift` | Compare architecture between two branches, tags, or commits |
 | `arch_dataflow` | Trace data flow from endpoints to data stores with structured process traces |
 | `arch_validate` | Check for circular dependencies, orphan nodes, and layering violations |
 | `arch_recommend` | Produce prioritized architecture improvement recommendations |
 
-### All 14 tools
+### All 18 tools
 
 | Tool | Category | What it does |
 |------|----------|-------------|
-| `arch_scan` | analysis | Scan a codebase and return the full architecture graph |
+| `arch_scan` | analysis | Scan a codebase or markdown directory and return the full architecture graph |
 | `arch_focus` | analysis | Scan a specific subdirectory or service |
 | `arch_dependencies` | analysis | Map internal, external, and infrastructure dependencies |
+| `arch_blast_radius` | analysis | Find the transitive set of nodes that depend on a target file or package |
 | `arch_dataflow` | analysis | Trace data flow with entry-to-terminal process traces and confidence scores |
 | `arch_boundaries` | analysis | Detect service boundaries and topology (monolith, monorepo, microservices) |
 | `arch_explain` | analysis | Explain topology, patterns, key decisions, and risks with code evidence |
-| `arch_generate` | diagram | Generate a diagram in 7 formats |
+| `arch_generate` | diagram | Generate a diagram in 9 formats |
 | `arch_diff` | drift | Compare current architecture against a saved baseline |
 | `arch_drift` | drift | Compare architecture between two git refs |
 | `arch_validate` | validation | Check for circular dependencies, orphan nodes, and layering violations |
@@ -100,6 +105,9 @@ Once configured, ask your LLM:
 | `arch_recommend` | validation | Prioritized improvement recommendations from metrics + violations + patterns |
 | `arch_history` | history | Show how architecture evolved over git history |
 | `arch_snapshot` | export | Save current architecture as a baseline for drift detection |
+| `arch_registry_add` | registry | Register a repo by alias for reuse across tool calls |
+| `arch_registry_list` | registry | List all registered repos |
+| `arch_registry_remove` | registry | Remove a registered repo alias |
 
 ## Supported languages
 
@@ -108,6 +116,7 @@ Once configured, ask your LLM:
 | Go | `go/ast` (stdlib) | Packages, imports, HTTP handlers, infrastructure |
 | TypeScript/TSX | tree-sitter | Modules, imports, Express/Fastify/Koa routes, infrastructure |
 | Python | tree-sitter | Modules, imports, Flask/FastAPI routes, infrastructure |
+| Markdown | regex link extraction | Notes, Obsidian wiki-links `[[note]]`, relative `[text](./file.md)` links |
 
 ## Infrastructure detection
 
@@ -131,6 +140,8 @@ Analyzers recognize common infrastructure packages and classify them automatical
 | JSON | Structured data with nodes, edges, topology metadata |
 | draw.io | XML format, open directly in diagrams.net |
 | Excalidraw | JSON format, open directly in Excalidraw |
+| HTML | Self-contained page with the Mermaid runtime embedded inline (~900 KB output, no network requests) |
+| forcegraph | Self-contained D3-driven force-directed page (~290 KB) with drag, zoom, pan; color = connected component; node size scales with degree. Use for hub-spoke graphs (knowledge vaults, dense dependency networks) where Mermaid's hierarchical layout produces a long horizontal stripe. Pair with `min_degree=10` to keep only hubs |
 
 ## Setup
 

@@ -289,6 +289,34 @@ func TestAnalyze_MissingFile(t *testing.T) {
 	}
 }
 
+func TestAnalyze_OversizedFileSkipsLinkExtraction(t *testing.T) {
+	dir := t.TempDir()
+	big := make([]byte, maxFileBytes+1024)
+	for i := range big {
+		big[i] = 'x'
+	}
+	// Insert a wiki-link that should be ignored because the file is over cap.
+	copy(big[100:], []byte("[[should-not-be-extracted]]"))
+	path := filepath.Join(dir, "big.md")
+	if err := os.WriteFile(path, big, 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	nodes, edges, err := New().Analyze(path)
+	if err != nil {
+		t.Fatalf("Analyze: %v", err)
+	}
+	if len(nodes) != 1 {
+		t.Fatalf("want 1 node (the note itself), got %d", len(nodes))
+	}
+	if nodes[0].Properties["skipped"] != "size" {
+		t.Fatalf("expected skipped=size property, got %v", nodes[0].Properties)
+	}
+	if len(edges) != 0 {
+		t.Fatalf("want 0 edges (over cap), got %d", len(edges))
+	}
+}
+
 func TestStripCodeBlocks_NestedFencesDifferentSymbols(t *testing.T) {
 	in := "before\n```\n~~~ inside backticks\n```\nafter\n"
 	got := stripCodeBlocks(in)
