@@ -1,5 +1,8 @@
 # Code to Arch MCP
 
+[![Go Report Card](https://goreportcard.com/badge/github.com/olgasafonova/code-to-arch-mcp)](https://goreportcard.com/report/github.com/olgasafonova/code-to-arch-mcp)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+
 An MCP server that reverse-engineers architecture from source code. Point it at any codebase; it returns services, databases, queues, endpoints, and their relationships as a structured graph. Also works on markdown directories (Obsidian vaults, doc trees) — wiki-links and relative `.md` links become dependency edges. Generate diagrams in 9 formats including a self-contained D3 force-directed page for hub-spoke graphs. Detect drift between any two branches, tags, or commits. Validate architecture rules. Track how the system evolves over time.
 
 No configuration files, no manual diagramming. Static analysis builds the architecture model directly from your code.
