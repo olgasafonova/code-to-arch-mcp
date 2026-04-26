@@ -340,6 +340,11 @@ func (h *HandlerRegistry) archGenerate(ctx context.Context, args ArchGenerateArg
 	}
 	if args.ViewLevel != "" {
 		opts.ViewLevel = render.ViewLevel(args.ViewLevel)
+	} else if opts.Format == render.FormatHTML {
+		// Human-facing HTML defaults to the full component view; the
+		// container default produces near-empty output for Go MCP
+		// servers (packages and endpoints, no service-type nodes).
+		opts.ViewLevel = render.ViewComponent
 	}
 	if args.Title != "" {
 		opts.Title = args.Title
@@ -370,8 +375,10 @@ func (h *HandlerRegistry) archGenerate(ctx context.Context, args ArchGenerateArg
 		diagram = render.DrawIO(graph, opts)
 	case render.FormatExcalidraw:
 		diagram = render.Excalidraw(graph, opts)
+	case render.FormatHTML:
+		diagram = render.HTML(graph, opts)
 	default:
-		return nil, fmt.Errorf("unsupported format: %s (supported: mermaid, plantuml, c4, structurizr, json, drawio, excalidraw)", args.Format)
+		return nil, fmt.Errorf("unsupported format: %s (supported: mermaid, plantuml, c4, structurizr, json, drawio, excalidraw, html)", args.Format)
 	}
 
 	// Report which nodes were pruned (if any).

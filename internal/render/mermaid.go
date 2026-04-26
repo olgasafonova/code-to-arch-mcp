@@ -20,6 +20,7 @@ const (
 	FormatJSON        Format = "json"
 	FormatDrawIO      Format = "drawio"
 	FormatExcalidraw  Format = "excalidraw"
+	FormatHTML        Format = "html"
 )
 
 // ViewLevel controls the level of detail in rendered output.
