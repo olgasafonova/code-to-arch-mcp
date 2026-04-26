@@ -68,9 +68,9 @@ Once configured, ask your LLM:
 - "Show me data flow traces from API endpoints to databases"
 - "Save this architecture as our v2.0 baseline"
 - "Scan this monorepo but limit to 500 files and skip test files"
-- "Scan my Obsidian vault at ~/notes and find orphan notes"
-- "Render my AI-Knowledge directory as a force-directed graph showing hubs at degree>=10"
-- "If I change ~/repo/internal/scanner what else needs review?" (uses arch_blast_radius)
+- "Scan an Obsidian vault and find orphan notes"
+- "Render the docs/ directory as a force-directed graph showing hubs at degree>=10"
+- "If I change internal/scanner what else needs review?" (uses arch_blast_radius)
 
 ## Tools
 
