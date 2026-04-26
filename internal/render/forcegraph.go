@@ -96,6 +96,8 @@ func ForceGraph(graph *model.ArchGraph, opts Options) string {
 	sb.WriteString(".link{stroke:#9ca3af;stroke-opacity:.5}")
 	sb.WriteString(".label{font-size:10px;fill:#374151;pointer-events:none;user-select:none}")
 	sb.WriteString(".label-hub{font-size:12px;font-weight:600;fill:#111}")
+	sb.WriteString(".label-leaf{visibility:hidden}")
+	sb.WriteString(".label-leaf.show{visibility:visible;font-size:11px;fill:#111;font-weight:500}")
 	sb.WriteString("</style>\n</head>\n<body>\n")
 	sb.WriteString("<div id=\"header\">")
 	fmt.Fprintf(&sb, "<h1>%s</h1>", html.EscapeString(title))
@@ -256,15 +258,25 @@ node.append("title").text(d =>
 
 const label = root.append("g").attr("class", "labels")
   .selectAll("text").data(NODES).join("text")
-  .attr("class", d => d.deg >= hubThreshold ? "label label-hub" : "label")
+  .attr("class", d => d.deg >= hubThreshold ? "label label-hub" : "label label-leaf")
   .attr("dx", d => radius(d.deg) + 3)
   .attr("dy", "0.35em")
   .text(d => d.name);
 
+// Reveal a leaf node's label on hover; hide it on leave. Hub labels are
+// always visible.
+node.on("mouseover", function(e, d) {
+  label.filter(l => l.id === d.id).classed("show", true);
+}).on("mouseout", function(e, d) {
+  label.filter(l => l.id === d.id).classed("show", false);
+});
+
 const sim = d3.forceSimulation(NODES)
-  .force("link", d3.forceLink(LINKS).id(d => d.id).distance(60).strength(0.4))
-  .force("charge", d3.forceManyBody().strength(-180))
+  .force("link", d3.forceLink(LINKS).id(d => d.id).distance(50).strength(0.5))
+  .force("charge", d3.forceManyBody().strength(-110))
   .force("center", d3.forceCenter(width / 2, height / 2))
+  .force("x", d3.forceX(width / 2).strength(0.06))
+  .force("y", d3.forceY(height / 2).strength(0.06))
   .force("collide", d3.forceCollide().radius(d => radius(d.deg) + 4))
   .on("tick", () => {
     link
