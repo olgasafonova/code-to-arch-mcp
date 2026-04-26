@@ -41,6 +41,47 @@ func TestMermaid_DatabaseShape(t *testing.T) {
 	}
 }
 
+func TestMermaid_NoteShape(t *testing.T) {
+	g := model.NewGraph("/vault")
+	g.AddNode(&model.Node{ID: "note:topic/intro", Name: "intro", Type: model.NodeNote})
+
+	result := Mermaid(g, Options{ViewLevel: ViewContainer})
+	if !strings.Contains(result, "subgraph Notes") {
+		t.Fatal("expected Notes subgraph")
+	}
+	if !strings.Contains(result, "([intro])") {
+		t.Fatalf("expected stadium shape ([intro]) in output:\n%s", result)
+	}
+}
+
+func TestMermaid_NoteLabelWithParensIsQuoted(t *testing.T) {
+	g := model.NewGraph("/vault")
+	g.AddNode(&model.Node{
+		ID:   "note:topic/article",
+		Name: "Article (with parens) - Author",
+		Type: model.NodeNote,
+	})
+
+	result := Mermaid(g, Options{ViewLevel: ViewContainer})
+	if !strings.Contains(result, `(["Article (with parens) - Author"])`) {
+		t.Fatalf("expected quoted label inside stadium shape:\n%s", result)
+	}
+}
+
+func TestMermaid_NotesAtSystemLevelHidden(t *testing.T) {
+	g := model.NewGraph("/vault")
+	g.AddNode(&model.Node{ID: "note:n", Name: "note-name", Type: model.NodeNote})
+	g.AddNode(&model.Node{ID: "svc:api", Name: "API", Type: model.NodeService})
+
+	result := Mermaid(g, Options{ViewLevel: ViewSystem})
+	if strings.Contains(result, "note-name") {
+		t.Fatal("system view should hide notes")
+	}
+	if !strings.Contains(result, "API") {
+		t.Fatal("system view should still show services")
+	}
+}
+
 func TestMermaid_ViewLevelFiltering(t *testing.T) {
 	g := model.NewGraph("/tmp")
 	g.AddNode(&model.Node{ID: "svc:api", Name: "API", Type: model.NodeService})

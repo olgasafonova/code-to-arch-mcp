@@ -18,7 +18,7 @@ func FilterNodesByViewLevel(nodes []*model.Node, level ViewLevel) []*model.Node 
 				result = append(result, n)
 			}
 		case ViewContainer:
-			// Services, databases, queues, caches, external APIs
+			// Services, databases, queues, caches, external APIs, notes
 			if n.Type != model.NodePackage && n.Type != model.NodeEndpoint {
 				result = append(result, n)
 			}
@@ -276,7 +276,10 @@ func PrepareGraph(graph *model.ArchGraph, opts Options) *VisibleGraph {
 
 // SanitizeID replaces characters that are invalid in diagram node IDs.
 // Different separators use distinct replacements to avoid collisions
-// (e.g., "api/v1" and "api.v1" produce different IDs).
+// (e.g., "api/v1" and "api.v1" produce different IDs). Any remaining
+// non-alphanumeric character is replaced with a single underscore so
+// IDs derived from filesystem paths (e.g. note basenames containing
+// parens or punctuation) parse correctly across all diagram formats.
 func SanitizeID(id string) string {
 	r := strings.NewReplacer(
 		"/", "__",
@@ -285,5 +288,19 @@ func SanitizeID(id string) string {
 		" ", "_",
 		"-", "_",
 	)
-	return r.Replace(id)
+	out := r.Replace(id)
+	var sb strings.Builder
+	sb.Grow(len(out))
+	for _, ch := range out {
+		switch {
+		case ch >= 'a' && ch <= 'z',
+			ch >= 'A' && ch <= 'Z',
+			ch >= '0' && ch <= '9',
+			ch == '_':
+			sb.WriteRune(ch)
+		default:
+			sb.WriteByte('_')
+		}
+	}
+	return sb.String()
 }

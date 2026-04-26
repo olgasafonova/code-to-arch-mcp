@@ -93,6 +93,7 @@ func Mermaid(graph *model.ArchGraph, opts Options) string {
 	renderNodeGroup(&sb, vg.Nodes, model.NodeCache, "Caches")
 	renderNodeGroup(&sb, vg.Nodes, model.NodeExternalAPI, "External APIs")
 	renderNodeGroup(&sb, vg.Nodes, model.NodeEndpoint, "Endpoints")
+	renderNodeGroup(&sb, vg.Nodes, model.NodeNote, "Notes")
 
 	// Render edges between visible nodes
 	for _, e := range vg.Edges {
@@ -124,9 +125,20 @@ func renderNodeGroup(sb *strings.Builder, nodes []*model.Node, nodeType model.No
 	for _, n := range group {
 		id := SanitizeID(n.ID)
 		shape := mermaidShape(n.Type)
-		fmt.Fprintf(sb, "        %s%s%s%s\n", id, shape.open, n.Name, shape.close)
+		fmt.Fprintf(sb, "        %s%s%s%s\n", id, shape.open, mermaidLabel(n.Name), shape.close)
 	}
 	sb.WriteString("    end\n")
+}
+
+// mermaidLabel quotes a node label when it contains characters that confuse
+// Mermaid's shape parser (parens, brackets, braces). Embedded double quotes
+// are converted to the &quot; HTML entity, which Mermaid renders correctly.
+func mermaidLabel(name string) string {
+	if !strings.ContainsAny(name, `()[]{}"`) {
+		return name
+	}
+	escaped := strings.ReplaceAll(name, `"`, "&quot;")
+	return `"` + escaped + `"`
 }
 
 type shapeDelimiters struct {
@@ -145,6 +157,8 @@ func mermaidShape(t model.NodeType) shapeDelimiters {
 		return shapeDelimiters{">", "]"}
 	case model.NodeEndpoint:
 		return shapeDelimiters{"{{", "}}"}
+	case model.NodeNote:
+		return shapeDelimiters{"([", "])"}
 	default:
 		return shapeDelimiters{"[", "]"}
 	}
