@@ -65,9 +65,9 @@ Three projects share parts of this space. None cover it the same way.
 
 **[Graphify](https://github.com/safishamsi/graphify)** (35k stars, MIT) is a multi-harness skill that turns any folder into a queryable knowledge graph: 25 code languages plus markdown, images, and video transcription. Persistent `graph.json`, SHA256 incremental cache, `merge-graphs` for cross-repo composition. Skill-scope, not MCP. No drift detection, no architecture-specific node types, no infrastructure inference.
 
-**Where ridge wins.** Agent-facing MCP transport across all 19 tools. Go-native via `go/ast`. Drift narratives: `arch_drift_explain` returns a paste-ready PR paragraph in one call, no LLM round-trip. Cross-substrate: code and markdown share the same graph model, so `arch_blast_radius` answers "if I change `internal/scanner`, what else needs review?" across both. Infrastructure-aware (databases, queues, caches as typed nodes with confidence scores).
+**What ridge focuses on.** Agent-facing MCP transport across all 19 tools. Go-native via `go/ast`. Drift narratives: `arch_drift_explain` returns a paste-ready PR paragraph in one call, no LLM round-trip. Cross-substrate: code and markdown share the same graph model, so `arch_blast_radius` answers "if I change `internal/scanner`, what else needs review?" across both. Infrastructure-aware (databases, queues, caches as typed nodes with confidence scores).
 
-**Where ridge loses.** No browser-native UI. Star count. No multimodal ingest (images, video, audio). If you want a file-level visualizer for JS/TS/Python with a UI, use CodeFlow. If you want a multimodal knowledge graph at skill scope, use Graphify.
+**What ridge doesn't do.** No browser-native UI. No multimodal ingest (images, video, audio). If you want a file-level visualizer for JS/TS/Python with a UI, use CodeFlow. If you want a multimodal knowledge graph at skill scope, use Graphify.
 
 ## Usage examples
 
