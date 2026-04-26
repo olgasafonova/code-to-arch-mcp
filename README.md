@@ -3,9 +3,9 @@
 [![Go Report Card](https://goreportcard.com/badge/github.com/olgasafonova/ridge)](https://goreportcard.com/report/github.com/olgasafonova/ridge)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
-An MCP server that reverse-engineers architecture from source code. Point it at any codebase; it returns services, databases, queues, endpoints, and their relationships as a structured graph. Also works on markdown directories (Obsidian vaults, doc trees) — wiki-links and relative `.md` links become dependency edges. Generate diagrams in 9 formats including a self-contained D3 force-directed page for hub-spoke graphs. Detect drift between any two branches, tags, or commits. Validate architecture rules. Track how the system evolves over time.
+An MCP server that reverse-engineers architecture from a directory tree. Point it at code (Go, TypeScript, Python) and it returns services, packages, databases, queues, endpoints, and their relationships as a structured graph. Point it at markdown (Obsidian vaults, doc trees) and wiki-links plus relative `.md` links become dependency edges in the same graph model. Generate diagrams in 9 formats including a self-contained D3 force-directed page for hub-spoke graphs. Detect drift between any two branches, tags, or commits. Validate architecture rules. Track how the system evolves over time.
 
-No configuration files, no manual diagramming. Static analysis builds the architecture model directly from your code.
+No configuration files, no manual diagramming. Static analysis builds the architecture model directly from the source tree.
 
 ## Why
 
@@ -13,7 +13,7 @@ Architecture diagrams go stale the day you commit them. When AI generates code f
 
 Most teams know they should review architecture regularly, check for circular dependencies, and catch structural drift between branches. In practice, these tasks are manual enough that they don't happen.
 
-- This tool generates architecture from code, so diagrams are always current. No one has to maintain them.
+- Generates architecture from the source tree (code or markdown), so diagrams are always current. No one has to maintain them.
 - `arch_validate` turns "check for circular dependencies" from a retro action item into a one-prompt task.
 - `arch_drift` compares architecture between any two git refs. It catches structural changes that code review misses: a new database dependency, a service that quietly became a monolith, an endpoint that bypasses the API gateway.
 - `arch_drift_explain` wraps that diff in a 2-5 sentence narrative you can paste straight into a PR description, standup channel, or release note. No LLM call; pure templating from the structured diff.
@@ -266,16 +266,17 @@ bash scripts/smoke-test.sh
 ## Architecture
 
 ```
-cmd/ridge/          Entry point (stdio + HTTP transport)
+cmd/ridge/          Entry point (stdio MCP transport)
 internal/
   model/                   ArchGraph, Node, Edge, Diff types
   scanner/                 File walker, incremental change detection, analyzer orchestration
   analyzer/golang/         Go static analysis (go/ast)
   analyzer/typescript/     TypeScript analysis (tree-sitter)
   analyzer/python/         Python analysis (tree-sitter)
+  analyzer/markdown/       Markdown link extraction (wiki-links, relative .md links)
   detector/                Boundary detection, topology, validation, metrics, recommendations, process traces
   drift/                   Snapshot comparison, git ref diffing, history
-  render/                  Mermaid, PlantUML, C4, Structurizr, JSON, draw.io, Excalidraw
+  render/                  Mermaid, PlantUML, C4, Structurizr, JSON, draw.io, Excalidraw, HTML, forcegraph
   infra/                   Cache, persistent state (~/.mcp-context/)
 tools/                     MCP tool definitions and handlers
 ```
