@@ -48,6 +48,7 @@ type Options struct {
 	Direction      string  // TB, LR, RL, BT (Mermaid direction)
 	Theme          Theme   // Optional two-color theme for Mermaid output
 	PruneThreshold float64 // 0 = disabled; 0.5 = prune nodes with fan-in > 50% of sources
+	MinDegree      int     // 0 = disabled; otherwise drop nodes whose total degree (in + out) is below this threshold
 }
 
 // DefaultOptions returns sensible rendering defaults.

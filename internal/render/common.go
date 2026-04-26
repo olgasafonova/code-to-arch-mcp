@@ -267,10 +267,56 @@ func PruneSuperNodes(vg *VisibleGraph, threshold float64) []string {
 	return prunedNames
 }
 
+// KeepHighDegree drops nodes whose total degree (incoming + outgoing edges)
+// is below minDegree. The complement of PruneSuperNodes: instead of removing
+// the most-connected nodes, it removes the least-connected ones — useful for
+// knowledge-graph-shaped inputs (vaults, doc trees) where the meaningful
+// structure is a small set of hubs and most files are leaves.
+//
+// Applied once (no cascade): a leaf that becomes detached after a hub is
+// already pruned is not re-evaluated.
+func KeepHighDegree(vg *VisibleGraph, minDegree int) {
+	if minDegree <= 0 || len(vg.Nodes) == 0 {
+		return
+	}
+
+	degree := make(map[string]int, len(vg.Nodes))
+	for _, e := range vg.Edges {
+		degree[e.Source]++
+		degree[e.Target]++
+	}
+
+	keep := make(map[string]bool, len(vg.Nodes))
+	for _, n := range vg.Nodes {
+		if degree[n.ID] >= minDegree {
+			keep[n.ID] = true
+		}
+	}
+
+	filtered := vg.Nodes[:0]
+	for _, n := range vg.Nodes {
+		if keep[n.ID] {
+			filtered = append(filtered, n)
+		} else {
+			delete(vg.IDs, n.ID)
+		}
+	}
+	vg.Nodes = filtered
+
+	filteredEdges := vg.Edges[:0]
+	for _, e := range vg.Edges {
+		if keep[e.Source] && keep[e.Target] {
+			filteredEdges = append(filteredEdges, e)
+		}
+	}
+	vg.Edges = filteredEdges
+}
+
 // PrepareGraph applies view-level filtering and optional super-node pruning.
 func PrepareGraph(graph *model.ArchGraph, opts Options) *VisibleGraph {
 	vg := FilterGraph(graph, opts.ViewLevel)
 	PruneSuperNodes(vg, opts.PruneThreshold)
+	KeepHighDegree(vg, opts.MinDegree)
 	return vg
 }
 

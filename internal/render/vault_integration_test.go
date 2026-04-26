@@ -70,11 +70,11 @@ func TestVaultRender(t *testing.T) {
 	}
 
 	htmlOpts := render.Options{
-		Format:         render.FormatHTML,
-		ViewLevel:      render.ViewComponent,
-		Title:          "AI Knowledge",
-		Direction:      "LR",
-		PruneThreshold: 0.05,
+		Format:    render.FormatHTML,
+		ViewLevel: render.ViewComponent,
+		Title:     "AI Knowledge (hubs, degree>=10)",
+		Direction: "LR",
+		MinDegree: 10,
 	}
 	html := render.HTML(res.Graph, htmlOpts)
 	htmlPath := filepath.Join(outDir, "vault.html")

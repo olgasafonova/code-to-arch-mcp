@@ -41,6 +41,32 @@ func TestMermaid_DatabaseShape(t *testing.T) {
 	}
 }
 
+func TestMermaid_MinDegreeFilter(t *testing.T) {
+	g := model.NewGraph("/vault")
+	g.AddNode(&model.Node{ID: "note:hub", Name: "hub", Type: model.NodeNote})
+	g.AddNode(&model.Node{ID: "note:a", Name: "a", Type: model.NodeNote})
+	g.AddNode(&model.Node{ID: "note:b", Name: "b", Type: model.NodeNote})
+	g.AddNode(&model.Node{ID: "note:c", Name: "c", Type: model.NodeNote})
+	g.AddNode(&model.Node{ID: "note:lonely", Name: "lonely", Type: model.NodeNote})
+
+	g.AddEdge(&model.Edge{Source: "note:a", Target: "note:hub", Type: model.EdgeDependency})
+	g.AddEdge(&model.Edge{Source: "note:b", Target: "note:hub", Type: model.EdgeDependency})
+	g.AddEdge(&model.Edge{Source: "note:c", Target: "note:hub", Type: model.EdgeDependency})
+
+	result := Mermaid(g, Options{ViewLevel: ViewContainer, MinDegree: 3})
+	if !strings.Contains(result, "[hub]") && !strings.Contains(result, "([hub])") {
+		t.Fatalf("hub (degree=3) should be kept:\n%s", result)
+	}
+	if strings.Contains(result, "lonely") {
+		t.Fatal("lonely note (degree=0) should be dropped at min_degree=3")
+	}
+	for _, leaf := range []string{"([a])", "([b])", "([c])"} {
+		if strings.Contains(result, leaf) {
+			t.Fatalf("leaf %s (degree=1) should be dropped at min_degree=3", leaf)
+		}
+	}
+}
+
 func TestMermaid_NoteShape(t *testing.T) {
 	g := model.NewGraph("/vault")
 	g.AddNode(&model.Node{ID: "note:topic/intro", Name: "intro", Type: model.NodeNote})

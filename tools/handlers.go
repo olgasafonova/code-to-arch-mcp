@@ -313,6 +313,7 @@ type ArchGenerateArgs struct {
 	ThemeBG        string  `json:"theme_bg,omitempty"`
 	ThemeFG        string  `json:"theme_fg,omitempty"`
 	PruneThreshold float64 `json:"prune_threshold,omitempty"`
+	MinDegree      int     `json:"min_degree,omitempty"`
 	ScanControl
 }
 
@@ -361,6 +362,9 @@ func (h *HandlerRegistry) archGenerate(ctx context.Context, args ArchGenerateArg
 	}
 	if args.PruneThreshold > 0 {
 		opts.PruneThreshold = args.PruneThreshold
+	}
+	if args.MinDegree > 0 {
+		opts.MinDegree = args.MinDegree
 	}
 
 	var diagram string
