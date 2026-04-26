@@ -153,7 +153,15 @@ Analyzers recognize common infrastructure packages and classify them automatical
 - Go 1.24+
 - C compiler (for tree-sitter CGo bindings; standard on macOS and Linux)
 
-### Build
+### Install
+
+```bash
+go install github.com/olgasafonova/code-to-arch-mcp/cmd/code-to-arch@latest
+```
+
+The binary lands in `$GOPATH/bin` (typically `~/go/bin/code-to-arch`).
+
+### Or build from source
 
 ```bash
 git clone https://github.com/olgasafonova/code-to-arch-mcp.git
