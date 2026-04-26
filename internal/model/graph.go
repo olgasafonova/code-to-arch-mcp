@@ -22,6 +22,7 @@ const (
 	NodeExternalAPI NodeType = "external_api"
 	NodePackage     NodeType = "package"
 	NodeEndpoint    NodeType = "endpoint"
+	NodeNote        NodeType = "note"
 )
 
 // EdgeType classifies relationships between components.
@@ -315,7 +316,8 @@ func (g *ArchGraph) ResolvedEdges() []*Edge {
 		refs = append(refs, pathRef{relPath: relPath, id: n.ID})
 	}
 
-	importCache := make(map[string]string) // import path → node ID ("" = unresolvable)
+	importCache := make(map[string]string)   // import path → node ID ("" = unresolvable)
+	wikilinkCache := make(map[string]string) // wikilink target → node ID ("" = unresolvable)
 
 	var result []*Edge
 	seen := make(map[string]bool)
@@ -343,6 +345,34 @@ func (g *ArchGraph) ResolvedEdges() []*Edge {
 					importCache[importPath] = ""
 					continue
 				}
+			}
+		}
+
+		if linkName, ok := strings.CutPrefix(target, "wikilink:"); ok {
+			if nodeID, cached := wikilinkCache[linkName]; cached {
+				if nodeID == "" {
+					continue
+				}
+				target = nodeID
+			} else {
+				resolved := ""
+				for _, ref := range refs {
+					stem := strings.TrimSuffix(ref.relPath, ".md")
+					stem = strings.TrimSuffix(stem, ".markdown")
+					base := stem
+					if i := strings.LastIndex(stem, "/"); i >= 0 {
+						base = stem[i+1:]
+					}
+					if base == linkName || stem == linkName || strings.HasSuffix(stem, "/"+linkName) {
+						resolved = ref.id
+						break
+					}
+				}
+				wikilinkCache[linkName] = resolved
+				if resolved == "" {
+					continue
+				}
+				target = resolved
 			}
 		}
 

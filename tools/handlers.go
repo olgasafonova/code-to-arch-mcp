@@ -14,6 +14,7 @@ import (
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 	"github.com/olgasafonova/code-to-arch-mcp/internal/analyzer/golang"
+	"github.com/olgasafonova/code-to-arch-mcp/internal/analyzer/markdown"
 	"github.com/olgasafonova/code-to-arch-mcp/internal/analyzer/python"
 	"github.com/olgasafonova/code-to-arch-mcp/internal/analyzer/typescript"
 	"github.com/olgasafonova/code-to-arch-mcp/internal/detector"
@@ -39,7 +40,8 @@ func NewHandlerRegistry(logger *slog.Logger) *HandlerRegistry {
 	goAnalyzer := golang.New()
 	tsAnalyzer := typescript.New()
 	pyAnalyzer := python.New()
-	s := scanner.New(logger, goAnalyzer, tsAnalyzer, pyAnalyzer)
+	mdAnalyzer := markdown.New()
+	s := scanner.New(logger, goAnalyzer, tsAnalyzer, pyAnalyzer, mdAnalyzer)
 
 	reg, err := registry.Load()
 	if err != nil {

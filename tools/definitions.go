@@ -27,10 +27,11 @@ var AllTools = []ToolSpec{
 		Description: `Analyze a codebase directory and generate an architecture model.
 USE WHEN the user wants to understand the overall architecture of a project,
 discover services, dependencies, and infrastructure components.
+Also works on markdown directories (Obsidian vaults, doc trees) — each note becomes a node, wiki-links [[note]] and relative .md links become dependency edges.
 Returns a summary by default; set detail="full" for the complete node/edge graph.
 For a single service or subdirectory, use arch_focus instead.
-WHY: Parses Go with go/ast, TypeScript and Python with tree-sitter. Detects dependencies from import statements only; dynamic loading, reflection, or runtime service discovery is invisible.
-FAILS WHEN: directory path doesn't exist (check path and retry), directory contains no supported code files in Go/TypeScript/Python (other languages are not yet supported).`,
+WHY: Parses Go with go/ast, TypeScript and Python with tree-sitter, markdown with link extraction. Detects dependencies from import statements only; dynamic loading, reflection, or runtime service discovery is invisible.
+FAILS WHEN: directory path doesn't exist (check path and retry), directory contains no supported files (Go, TypeScript, Python, or markdown).`,
 		Category:   "analysis",
 		ReadOnly:   true,
 		Idempotent: true,
@@ -42,7 +43,7 @@ FAILS WHEN: directory path doesn't exist (check path and retry), directory conta
 		Description: `Analyze a specific subdirectory or service within a codebase.
 USE WHEN the user wants to zoom into one service or module, not the entire project.
 Pass a subdirectory path; returns the same format as arch_scan scoped to that subtree.
-FAILS WHEN: subdirectory path doesn't exist (check path), no supported code files in that subtree (Go/TypeScript/Python only).`,
+FAILS WHEN: subdirectory path doesn't exist (check path), no supported files in that subtree (Go, TypeScript, Python, or markdown).`,
 		Category:   "analysis",
 		ReadOnly:   true,
 		Idempotent: true,
