@@ -793,12 +793,7 @@ type ArchDriftExplainResult struct {
 }
 
 func (h *HandlerRegistry) archDriftExplain(ctx context.Context, args ArchDriftExplainArgs) (*ArchDriftExplainResult, error) {
-	report, err := h.archDrift(ctx, ArchDriftArgs{
-		Path:    args.Path,
-		Repo:    args.Repo,
-		BaseRef: args.BaseRef,
-		HeadRef: args.HeadRef,
-	})
+	report, err := h.archDrift(ctx, ArchDriftArgs(args))
 	if err != nil {
 		return nil, err
 	}
