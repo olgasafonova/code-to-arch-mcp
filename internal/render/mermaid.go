@@ -21,6 +21,7 @@ const (
 	FormatDrawIO      Format = "drawio"
 	FormatExcalidraw  Format = "excalidraw"
 	FormatHTML        Format = "html"
+	FormatForceGraph  Format = "forcegraph"
 )
 
 // ViewLevel controls the level of detail in rendered output.

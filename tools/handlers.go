@@ -385,8 +385,10 @@ func (h *HandlerRegistry) archGenerate(ctx context.Context, args ArchGenerateArg
 		diagram = render.Excalidraw(graph, opts)
 	case render.FormatHTML:
 		diagram = render.HTML(graph, opts)
+	case render.FormatForceGraph:
+		diagram = render.ForceGraph(graph, opts)
 	default:
-		return nil, fmt.Errorf("unsupported format: %s (supported: mermaid, plantuml, c4, structurizr, json, drawio, excalidraw, html)", args.Format)
+		return nil, fmt.Errorf("unsupported format: %s (supported: mermaid, plantuml, c4, structurizr, json, drawio, excalidraw, html, forcegraph)", args.Format)
 	}
 
 	// Report which nodes were pruned (if any).

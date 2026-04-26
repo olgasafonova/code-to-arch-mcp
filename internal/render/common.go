@@ -273,43 +273,51 @@ func PruneSuperNodes(vg *VisibleGraph, threshold float64) []string {
 // knowledge-graph-shaped inputs (vaults, doc trees) where the meaningful
 // structure is a small set of hubs and most files are leaves.
 //
-// Applied once (no cascade): a leaf that becomes detached after a hub is
-// already pruned is not re-evaluated.
+// Applied iteratively until stable: a node that loses all its edges because
+// its only neighbors were leaves below the threshold is itself dropped. This
+// prevents marooned-hub artifacts in the rendered output.
 func KeepHighDegree(vg *VisibleGraph, minDegree int) {
 	if minDegree <= 0 || len(vg.Nodes) == 0 {
 		return
 	}
-
-	degree := make(map[string]int, len(vg.Nodes))
-	for _, e := range vg.Edges {
-		degree[e.Source]++
-		degree[e.Target]++
-	}
-
-	keep := make(map[string]bool, len(vg.Nodes))
-	for _, n := range vg.Nodes {
-		if degree[n.ID] >= minDegree {
-			keep[n.ID] = true
+	for {
+		degree := make(map[string]int, len(vg.Nodes))
+		for _, e := range vg.Edges {
+			degree[e.Source]++
+			degree[e.Target]++
 		}
-	}
 
-	filtered := vg.Nodes[:0]
-	for _, n := range vg.Nodes {
-		if keep[n.ID] {
-			filtered = append(filtered, n)
-		} else {
-			delete(vg.IDs, n.ID)
+		keep := make(map[string]bool, len(vg.Nodes))
+		dropped := 0
+		for _, n := range vg.Nodes {
+			if degree[n.ID] >= minDegree {
+				keep[n.ID] = true
+			} else {
+				dropped++
+			}
 		}
-	}
-	vg.Nodes = filtered
+		if dropped == 0 {
+			return
+		}
 
-	filteredEdges := vg.Edges[:0]
-	for _, e := range vg.Edges {
-		if keep[e.Source] && keep[e.Target] {
-			filteredEdges = append(filteredEdges, e)
+		filtered := vg.Nodes[:0]
+		for _, n := range vg.Nodes {
+			if keep[n.ID] {
+				filtered = append(filtered, n)
+			} else {
+				delete(vg.IDs, n.ID)
+			}
 		}
+		vg.Nodes = filtered
+
+		filteredEdges := vg.Edges[:0]
+		for _, e := range vg.Edges {
+			if keep[e.Source] && keep[e.Target] {
+				filteredEdges = append(filteredEdges, e)
+			}
+		}
+		vg.Edges = filteredEdges
 	}
-	vg.Edges = filteredEdges
 }
 
 // PrepareGraph applies view-level filtering and optional super-node pruning.

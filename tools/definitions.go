@@ -54,13 +54,14 @@ FAILS WHEN: subdirectory path doesn't exist (check path), no supported files in 
 		Title:  "Generate Architecture Diagram",
 		Description: `Generate a diagram from a scanned architecture in the specified format.
 USE WHEN the user wants a visual representation of the architecture.
-Supports Mermaid, PlantUML, C4, Structurizr DSL, draw.io, Excalidraw, JSON, and HTML output.
+Supports Mermaid, PlantUML, C4, Structurizr DSL, draw.io, Excalidraw, JSON, HTML, and forcegraph output.
 View levels: system (high-level), container (services + infra), component (all packages).
 The HTML format produces a self-contained page with the Mermaid runtime embedded inline (~900 KB output, no network requests when opened). Use HTML for human-facing review and link sharing. For Go MCP servers, HTML defaults to the component view because the container view returns near-empty output (packages and endpoints, no service-type nodes); pass view_level=container explicitly to override.
+The forcegraph format produces a self-contained D3-driven force-directed page (~290 KB output) with drag-to-rearrange, wheel zoom, pan. Use forcegraph for hub-spoke graphs (knowledge vaults, doc trees, dense dependency networks) where Mermaid's hierarchical layout produces a long horizontal stripe.
 Optional theme_bg and theme_fg hex colors (e.g. "#ffffff", "#1e293b") derive a full Mermaid color palette from two colors. Works with Mermaid and HTML formats.
 Set prune_threshold (0.0-1.0) to remove ubiquitous nodes like logging or fmt that clutter diagrams. A value of 0.5 removes nodes targeted by more than 50% of source nodes.
 Set min_degree (integer >= 1) to drop nodes whose total in+out degree is below the threshold — useful for knowledge graphs / Obsidian vaults where Mermaid's hierarchical layout breaks down past ~50 nodes. min_degree=5 typically reduces a 300-note vault to its hubs.
-FAILS WHEN: no architecture data loaded (run arch_scan or arch_focus first), invalid format name (valid: mermaid, plantuml, c4, structurizr, drawio, excalidraw, json, html).`,
+FAILS WHEN: no architecture data loaded (run arch_scan or arch_focus first), invalid format name (valid: mermaid, plantuml, c4, structurizr, drawio, excalidraw, json, html, forcegraph).`,
 		Category:   "diagram",
 		ReadOnly:   true,
 		Idempotent: true,

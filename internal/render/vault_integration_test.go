@@ -73,7 +73,7 @@ func TestVaultRender(t *testing.T) {
 		Format:    render.FormatHTML,
 		ViewLevel: render.ViewComponent,
 		Title:     "AI Knowledge (hubs, degree>=10)",
-		Direction: "LR",
+		Direction: "TB",
 		MinDegree: 10,
 	}
 	html := render.HTML(res.Graph, htmlOpts)
@@ -82,4 +82,17 @@ func TestVaultRender(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Logf("html (%d bytes): %s", len(html), htmlPath)
+
+	forceOpts := render.Options{
+		Format:    render.FormatForceGraph,
+		ViewLevel: render.ViewComponent,
+		Title:     "AI Knowledge — force-directed",
+		MinDegree: 3,
+	}
+	force := render.ForceGraph(res.Graph, forceOpts)
+	forcePath := filepath.Join(outDir, "vault-force.html")
+	if err := os.WriteFile(forcePath, []byte(force), 0644); err != nil {
+		t.Fatal(err)
+	}
+	t.Logf("forcegraph (%d bytes): %s", len(force), forcePath)
 }
