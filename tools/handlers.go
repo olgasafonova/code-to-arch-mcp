@@ -67,6 +67,8 @@ func (h *HandlerRegistry) RegisterAll(server *mcp.Server) {
 			register(h, server, spec, h.archGenerate)
 		case "ArchDependencies":
 			register(h, server, spec, h.archDependencies)
+		case "ArchBlastRadius":
+			register(h, server, spec, h.archBlastRadius)
 		case "ArchDataflow":
 			register(h, server, spec, h.archDataflow)
 		case "ArchBoundaries":
@@ -478,6 +480,63 @@ func (h *HandlerRegistry) archDependencies(ctx context.Context, args ArchDepende
 		Internal:       internal,
 		External:       external,
 		Infrastructure: infra,
+	}, nil
+}
+
+// ArchBlastRadiusArgs are the arguments for arch_blast_radius.
+type ArchBlastRadiusArgs struct {
+	Path     string `json:"path"`
+	Repo     string `json:"repo,omitempty"`
+	Target   string `json:"target"`
+	MaxDepth int    `json:"max_depth,omitempty"`
+	ScanControl
+}
+
+// ArchBlastRadiusResult is the result of arch_blast_radius.
+type ArchBlastRadiusResult struct {
+	Target      string                      `json:"target"`
+	TargetID    string                      `json:"target_id"`
+	Direct      int                         `json:"direct"`
+	Total       int                         `json:"total"`
+	MaxDepthHit bool                        `json:"max_depth_hit"`
+	Dependents  []detector.BlastRadiusEntry `json:"dependents"`
+}
+
+func (h *HandlerRegistry) archBlastRadius(ctx context.Context, args ArchBlastRadiusArgs) (*ArchBlastRadiusResult, error) {
+	if args.Target == "" {
+		return nil, fmt.Errorf("target is required")
+	}
+
+	path, alias, err := h.resolveRepoPath(args.Path, args.Repo)
+	if err != nil {
+		return nil, err
+	}
+	if err := safepath.ValidateScanPath(path); err != nil {
+		return nil, err
+	}
+
+	graph, _, err := h.scanPath(ctx, path, alias, args.ScanControl)
+	if err != nil {
+		return nil, fmt.Errorf("scanning codebase: %w", err)
+	}
+
+	targetID, ok := detector.ResolveTargetToID(graph, args.Target)
+	if !ok {
+		return nil, fmt.Errorf("target %q not found in scanned graph (run arch_scan to list available node IDs and paths)", args.Target)
+	}
+
+	res := detector.ComputeBlastRadius(graph, targetID, args.MaxDepth)
+	if res.Dependents == nil {
+		res.Dependents = []detector.BlastRadiusEntry{}
+	}
+
+	return &ArchBlastRadiusResult{
+		Target:      args.Target,
+		TargetID:    res.TargetID,
+		Direct:      res.Direct,
+		Total:       res.Total,
+		MaxDepthHit: res.MaxDepthHit,
+		Dependents:  res.Dependents,
 	}, nil
 }
 

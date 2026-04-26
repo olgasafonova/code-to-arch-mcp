@@ -26,8 +26,8 @@ func TestAllToolsHaveRequiredFields(t *testing.T) {
 }
 
 func TestAllToolsHaveExpectedCount(t *testing.T) {
-	if len(AllTools) != 17 {
-		t.Fatalf("expected 17 tools, got %d", len(AllTools))
+	if len(AllTools) != 18 {
+		t.Fatalf("expected 18 tools, got %d", len(AllTools))
 	}
 }
 

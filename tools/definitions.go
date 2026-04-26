@@ -77,6 +77,22 @@ FAILS WHEN: no architecture data loaded (run arch_scan or arch_focus first).`,
 		Idempotent: true,
 	},
 	{
+		Name:   "arch_blast_radius",
+		Method: "ArchBlastRadius",
+		Title:  "Compute Blast Radius",
+		Description: `Find every node that transitively depends on a target file or package: the set of components whose work would be affected if the target changed.
+USE WHEN the user asks "if I change X, what else needs review?", "what depends on this?", or wants to understand the impact of a change before making it.
+Complements arch_dependencies (what X depends on, downstream) by walking the reverse direction (what depends on X, upstream).
+Target can be a node ID (e.g. "pkg:internal/scanner") or a path suffix; the suffix match wins if the exact ID is not found.
+Returns dependents grouped by depth: depth 1 is direct importers, depth 2 importers-of-importers, and so on. BFS records the shortest path back to the target. Cycles are not double-traversed.
+Default max_depth is 50; lower for shorter output, raise for very deep import graphs.
+WHY: Walks resolved import edges in reverse. Suffix matching makes targets like "internal/scanner" work even when node IDs are prefixed.
+FAILS WHEN: no architecture data loaded (run arch_scan or arch_focus first), target string matches no node (run arch_scan to see available IDs and paths).`,
+		Category:   "analysis",
+		ReadOnly:   true,
+		Idempotent: true,
+	},
+	{
 		Name:   "arch_dataflow",
 		Method: "ArchDataflow",
 		Title:  "Trace Data Flow",
