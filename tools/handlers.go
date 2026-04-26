@@ -325,6 +325,7 @@ type ArchGenerateResult struct {
 	Diagram     string   `json:"diagram"`
 	Summary     string   `json:"summary"`
 	PrunedNodes []string `json:"pruned_nodes,omitempty"`
+	Notes       []string `json:"notes,omitempty"`
 }
 
 func (h *HandlerRegistry) archGenerate(ctx context.Context, args ArchGenerateArgs) (*ArchGenerateResult, error) {
@@ -393,11 +394,20 @@ func (h *HandlerRegistry) archGenerate(ctx context.Context, args ArchGenerateArg
 		return nil, fmt.Errorf("unsupported format: %s (supported: mermaid, plantuml, c4, structurizr, json, drawio, excalidraw, html, forcegraph)", args.Format)
 	}
 
-	// Report which nodes were pruned (if any).
+	// Report which nodes were pruned (if any) and surface filter warnings.
 	var prunedNodes []string
-	if opts.PruneThreshold > 0 {
+	var notes []string
+	if opts.PruneThreshold > 0 || opts.MinDegree > 0 {
 		vg := render.PrepareGraph(graph, opts)
 		prunedNodes = vg.PrunedNodes
+		// min_degree iterates KeepHighDegree until stable, so on sparse
+		// hub-and-spoke graphs a too-high threshold can cascade to zero
+		// nodes silently. Tell the caller why the diagram is empty.
+		if opts.MinDegree > 0 && len(vg.Nodes) == 0 && graph.NodeCount() > 0 {
+			notes = append(notes, fmt.Sprintf(
+				"min_degree=%d filtered out all %d nodes via iterative cascade (each round drops nodes below threshold, which lowers neighbor degrees, which drops more nodes). Try a lower min_degree, or omit it to see the full graph.",
+				opts.MinDegree, graph.NodeCount()))
+		}
 	}
 
 	return &ArchGenerateResult{
@@ -405,6 +415,7 @@ func (h *HandlerRegistry) archGenerate(ctx context.Context, args ArchGenerateArg
 		Diagram:     diagram,
 		Summary:     graph.Summary(),
 		PrunedNodes: prunedNodes,
+		Notes:       notes,
 	}, nil
 }
 

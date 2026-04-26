@@ -141,3 +141,54 @@ func makeTestGraph() *model.ArchGraph {
 func makeTestVisibleGraph() *VisibleGraph {
 	return FilterGraph(makeTestGraph(), ViewComponent)
 }
+
+// TestKeepHighDegree_CascadeToEmpty documents the iterative-cascade behavior:
+// on a sparse hub-and-spoke graph, a too-high min_degree drops leaves first,
+// which lowers hub degree, which drops the hub on the next iteration. The
+// arch_generate handler relies on this collapse-to-zero condition to surface
+// a warning so callers know why their diagram is empty.
+func TestKeepHighDegree_CascadeToEmpty(t *testing.T) {
+	// Hub with 3 leaves: hub has degree 3, each leaf has degree 1.
+	g := model.NewGraph("/tmp")
+	g.AddNode(&model.Node{ID: "pkg:hub", Name: "hub", Type: model.NodePackage})
+	g.AddNode(&model.Node{ID: "pkg:l1", Name: "l1", Type: model.NodePackage})
+	g.AddNode(&model.Node{ID: "pkg:l2", Name: "l2", Type: model.NodePackage})
+	g.AddNode(&model.Node{ID: "pkg:l3", Name: "l3", Type: model.NodePackage})
+	g.AddEdge(&model.Edge{Source: "pkg:l1", Target: "pkg:hub", Type: model.EdgeDependency})
+	g.AddEdge(&model.Edge{Source: "pkg:l2", Target: "pkg:hub", Type: model.EdgeDependency})
+	g.AddEdge(&model.Edge{Source: "pkg:l3", Target: "pkg:hub", Type: model.EdgeDependency})
+
+	vg := FilterGraph(g, ViewComponent)
+	KeepHighDegree(vg, 4) // higher than hub's degree of 3
+
+	if len(vg.Nodes) != 0 {
+		t.Fatalf("expected cascade to drop everything, got %d nodes", len(vg.Nodes))
+	}
+}
+
+func TestKeepHighDegree_KeepsDenseSubgraph(t *testing.T) {
+	// Triangle (each node degree 2) plus an outer leaf.
+	g := model.NewGraph("/tmp")
+	g.AddNode(&model.Node{ID: "pkg:a", Name: "A", Type: model.NodePackage})
+	g.AddNode(&model.Node{ID: "pkg:b", Name: "B", Type: model.NodePackage})
+	g.AddNode(&model.Node{ID: "pkg:c", Name: "C", Type: model.NodePackage})
+	g.AddNode(&model.Node{ID: "pkg:leaf", Name: "leaf", Type: model.NodePackage})
+	g.AddEdge(&model.Edge{Source: "pkg:a", Target: "pkg:b", Type: model.EdgeDependency})
+	g.AddEdge(&model.Edge{Source: "pkg:b", Target: "pkg:c", Type: model.EdgeDependency})
+	g.AddEdge(&model.Edge{Source: "pkg:c", Target: "pkg:a", Type: model.EdgeDependency})
+	g.AddEdge(&model.Edge{Source: "pkg:leaf", Target: "pkg:a", Type: model.EdgeDependency})
+
+	vg := FilterGraph(g, ViewComponent)
+	KeepHighDegree(vg, 2) // leaf has degree 1, triangle nodes have degree 2 or 3
+
+	// Leaf drops in iteration 1; A loses degree 1 (3→2), still meets threshold.
+	// Triangle survives.
+	if len(vg.Nodes) != 3 {
+		t.Fatalf("expected triangle to survive (3 nodes), got %d", len(vg.Nodes))
+	}
+	for _, n := range vg.Nodes {
+		if n.ID == "pkg:leaf" {
+			t.Fatal("leaf should have been filtered")
+		}
+	}
+}
