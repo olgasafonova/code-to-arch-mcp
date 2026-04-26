@@ -115,3 +115,35 @@ jobs:
         uses: golangci/golangci-lint-action@v9
         with:
           version: v2.7.2
+
+  clean-clone:
+    # Belt-and-suspenders: builds and tests from a pristine `git clone` with no
+    # caching. Runs independently of test/build/lint to catch regressions where
+    # main HEAD only compiles against a contributor's local WIP. Solo-maintainer
+    # hygiene; e346a99 referenced safepath.ValidateOutputPath from uncommitted
+    # local state and went undetected until the 22-04-2026 SDK bump sweep
+    # (retroactively fixed in b8fbdf9).
+    runs-on: ubuntu-latest
+    steps:
+      - name: Clone fresh from origin
+        run: |
+          git clone --depth 1 --no-tags \
+            "https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.git" \
+            fresh
+          cd fresh
+          git fetch --depth 1 origin "${{ github.sha }}"
+          git checkout --quiet FETCH_HEAD
+
+      - name: Set up Go (no module cache)
+        uses: actions/setup-go@v6
+        with:
+          go-version: '1.25'
+          cache: false
+
+      - name: Build all packages
+        working-directory: fresh
+        run: go build ./...
+
+      - name: Test all packages
+        working-directory: fresh
+        run: go test ./...
