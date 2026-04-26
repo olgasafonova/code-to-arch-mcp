@@ -4,7 +4,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/olgasafonova/code-to-arch-mcp/internal/model"
+	"github.com/olgasafonova/ridge/internal/model"
 )
 
 func TestMermaid_BasicOutput(t *testing.T) {

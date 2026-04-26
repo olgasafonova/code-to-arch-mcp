@@ -3,7 +3,7 @@ package drift
 import (
 	"fmt"
 
-	"github.com/olgasafonova/code-to-arch-mcp/internal/model"
+	"github.com/olgasafonova/ridge/internal/model"
 )
 
 // Compare detects differences between a baseline graph and a current graph.

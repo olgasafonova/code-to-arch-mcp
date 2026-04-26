@@ -8,7 +8,7 @@ import (
 
 	"gopkg.in/yaml.v3"
 
-	"github.com/olgasafonova/code-to-arch-mcp/internal/model"
+	"github.com/olgasafonova/ridge/internal/model"
 )
 
 // RulesConfig holds custom architecture validation rules loaded from .arch-rules.yaml.

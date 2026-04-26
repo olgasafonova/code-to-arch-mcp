@@ -1,6 +1,6 @@
-# Code to Arch MCP
+# Ridge
 
-[![Go Report Card](https://goreportcard.com/badge/github.com/olgasafonova/code-to-arch-mcp)](https://goreportcard.com/report/github.com/olgasafonova/code-to-arch-mcp)
+[![Go Report Card](https://goreportcard.com/badge/github.com/olgasafonova/ridge)](https://goreportcard.com/report/github.com/olgasafonova/ridge)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
 An MCP server that reverse-engineers architecture from source code. Point it at any codebase; it returns services, databases, queues, endpoints, and their relationships as a structured graph. Also works on markdown directories (Obsidian vaults, doc trees) — wiki-links and relative `.md` links become dependency edges. Generate diagrams in 9 formats including a self-contained D3 force-directed page for hub-spoke graphs. Detect drift between any two branches, tags, or commits. Validate architecture rules. Track how the system evolves over time.
@@ -159,16 +159,16 @@ Analyzers recognize common infrastructure packages and classify them automatical
 ### Install
 
 ```bash
-go install github.com/olgasafonova/code-to-arch-mcp/cmd/code-to-arch@latest
+go install github.com/olgasafonova/ridge/cmd/ridge@latest
 ```
 
-The binary lands in `$GOPATH/bin` (typically `~/go/bin/code-to-arch`).
+The binary lands in `$GOPATH/bin` (typically `~/go/bin/ridge`).
 
 ### Or build from source
 
 ```bash
-git clone https://github.com/olgasafonova/code-to-arch-mcp.git
-cd code-to-arch-mcp
+git clone https://github.com/olgasafonova/ridge.git
+cd ridge
 make build
 ```
 
@@ -179,8 +179,8 @@ Add to your `~/.claude.json`:
 ```json
 {
   "mcpServers": {
-    "code-to-arch": {
-      "command": "/path/to/code-to-arch",
+    "ridge": {
+      "command": "/path/to/ridge",
       "args": []
     }
   }
@@ -192,10 +192,10 @@ Or run from source:
 ```json
 {
   "mcpServers": {
-    "code-to-arch": {
+    "ridge": {
       "command": "go",
-      "args": ["run", "./cmd/code-to-arch"],
-      "cwd": "/path/to/code-to-arch-mcp"
+      "args": ["run", "./cmd/ridge"],
+      "cwd": "/path/to/ridge"
     }
   }
 }
@@ -218,7 +218,7 @@ Partial results include a `truncated: true` flag so you know the graph is incomp
 
 ## Incremental scanning
 
-Repeat scans on the same codebase are fast. The server tracks file modification times and content hashes in `~/.mcp-context/code-to-arch/`. On subsequent scans, only files that actually changed get re-analyzed; unchanged files reuse cached analysis results.
+Repeat scans on the same codebase are fast. The server tracks file modification times and content hashes in `~/.mcp-context/ridge/`. On subsequent scans, only files that actually changed get re-analyzed; unchanged files reuse cached analysis results.
 
 The stats in the response show what happened:
 - `files_analyzed` — total files in the codebase
@@ -252,7 +252,7 @@ bash scripts/smoke-test.sh
 ## Architecture
 
 ```
-cmd/code-to-arch/          Entry point (stdio + HTTP transport)
+cmd/ridge/          Entry point (stdio + HTTP transport)
 internal/
   model/                   ArchGraph, Node, Edge, Diff types
   scanner/                 File walker, incremental change detection, analyzer orchestration

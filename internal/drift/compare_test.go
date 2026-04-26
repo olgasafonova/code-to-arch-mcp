@@ -3,7 +3,7 @@ package drift
 import (
 	"testing"
 
-	"github.com/olgasafonova/code-to-arch-mcp/internal/model"
+	"github.com/olgasafonova/ridge/internal/model"
 )
 
 func TestCompare_NoChanges(t *testing.T) {

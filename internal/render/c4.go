@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/olgasafonova/code-to-arch-mcp/internal/model"
+	"github.com/olgasafonova/ridge/internal/model"
 )
 
 // C4 renders an ArchGraph using C4-PlantUML notation.

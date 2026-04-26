@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"sort"
 
-	"github.com/olgasafonova/code-to-arch-mcp/internal/model"
+	"github.com/olgasafonova/ridge/internal/model"
 )
 
 const (
@@ -312,7 +312,7 @@ func excaliMarshal(elements []map[string]any) string {
 	file := map[string]any{
 		"type":     "excalidraw",
 		"version":  2,
-		"source":   "code-to-arch-mcp",
+		"source":   "ridge",
 		"elements": elements,
 		"appState": map[string]any{"viewBackgroundColor": "#ffffff"},
 		"files":    map[string]any{},

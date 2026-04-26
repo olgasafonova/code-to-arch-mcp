@@ -16,7 +16,7 @@ import (
 	"go.opentelemetry.io/otel/trace"
 )
 
-const TracerName = "code-to-arch-mcp"
+const TracerName = "ridge"
 
 // Config holds tracing configuration.
 type Config struct {

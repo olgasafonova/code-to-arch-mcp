@@ -8,7 +8,7 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/olgasafonova/code-to-arch-mcp/internal/model"
+	"github.com/olgasafonova/ridge/internal/model"
 )
 
 // d3JS is the D3.js runtime, embedded for offline rendering.

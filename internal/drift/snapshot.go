@@ -7,7 +7,7 @@ import (
 	"os"
 	"time"
 
-	"github.com/olgasafonova/code-to-arch-mcp/internal/model"
+	"github.com/olgasafonova/ridge/internal/model"
 )
 
 // Snapshot is a serializable baseline of an architecture graph.

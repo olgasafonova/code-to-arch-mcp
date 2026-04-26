@@ -3,7 +3,7 @@ package render
 import (
 	"encoding/json"
 
-	"github.com/olgasafonova/code-to-arch-mcp/internal/model"
+	"github.com/olgasafonova/ridge/internal/model"
 )
 
 // jsonOutput is the structured output for JSON rendering.

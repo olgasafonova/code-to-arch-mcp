@@ -5,7 +5,7 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/olgasafonova/code-to-arch-mcp/internal/model"
+	"github.com/olgasafonova/ridge/internal/model"
 )
 
 // Narrate produces a natural-language summary of a DiffReport. The output is

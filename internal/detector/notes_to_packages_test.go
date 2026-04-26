@@ -6,7 +6,7 @@ import (
 	"slices"
 	"testing"
 
-	"github.com/olgasafonova/code-to-arch-mcp/internal/model"
+	"github.com/olgasafonova/ridge/internal/model"
 )
 
 func TestNormalizeCandidate(t *testing.T) {

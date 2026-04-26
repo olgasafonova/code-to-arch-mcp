@@ -6,7 +6,7 @@ import (
 	"os"
 	"time"
 
-	"github.com/olgasafonova/code-to-arch-mcp/internal/model"
+	"github.com/olgasafonova/ridge/internal/model"
 )
 
 // FileEntry tracks a single file's state and cached analysis results.

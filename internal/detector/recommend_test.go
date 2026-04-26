@@ -4,7 +4,7 @@ import (
 	"slices"
 	"testing"
 
-	"github.com/olgasafonova/code-to-arch-mcp/internal/model"
+	"github.com/olgasafonova/ridge/internal/model"
 )
 
 // helper to build a minimal graph with nodes and edges.

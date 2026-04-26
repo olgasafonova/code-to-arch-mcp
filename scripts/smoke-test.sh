@@ -19,7 +19,7 @@ log_pass() { echo -e "${GREEN}PASS${NC} $1"; ((pass++)); }
 log_fail() { echo -e "${RED}FAIL${NC} $1"; ((fail++)); }
 log_skip() { echo -e "${YELLOW}SKIP${NC} $1"; ((skip++)); }
 
-echo "=== code-to-arch-mcp smoke test ==="
+echo "=== ridge smoke test ==="
 echo ""
 
 # Ensure unit tests pass first

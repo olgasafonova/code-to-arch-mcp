@@ -1,7 +1,7 @@
 // Package scanner provides the file walker and analyzer orchestration layer.
 package scanner
 
-import "github.com/olgasafonova/code-to-arch-mcp/internal/model"
+import "github.com/olgasafonova/ridge/internal/model"
 
 // Analyzer is implemented by each language-specific analyzer.
 // An analyzer receives a file path and returns nodes and edges discovered in that file.

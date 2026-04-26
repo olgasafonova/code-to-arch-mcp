@@ -6,7 +6,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/olgasafonova/code-to-arch-mcp/internal/model"
+	"github.com/olgasafonova/ridge/internal/model"
 )
 
 // Format enumerates supported output formats.

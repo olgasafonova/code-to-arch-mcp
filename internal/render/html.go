@@ -6,7 +6,7 @@ import (
 	"html"
 	"strings"
 
-	"github.com/olgasafonova/code-to-arch-mcp/internal/model"
+	"github.com/olgasafonova/ridge/internal/model"
 )
 
 // mermaidJS is the Mermaid runtime, embedded for offline rendering.

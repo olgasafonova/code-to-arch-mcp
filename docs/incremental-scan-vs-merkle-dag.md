@@ -1,20 +1,20 @@
-# Incremental scan state: code-to-arch-mcp vs zilliztech/claude-context
+# Incremental scan state: ridge vs zilliztech/claude-context
 
 Comparison of two incremental-indexing approaches for codebase analysis.
-Filed under bead `code-to-arch-mcp-ycx` Thread B. No code change here; this is a design read.
+Filed under bead `ridge-ycx` Thread B. No code change here; this is a design read.
 
 ## What this compares
 
 Both systems walk a codebase, persist per-file state, and reuse that state on the next run to avoid re-doing work for unchanged files. They serve different consumers, so the comparison has to pin down where their needs diverge.
 
-- `code-to-arch-mcp` reuses cached *analysis output* (Nodes and Edges in `internal/model`) for unchanged files, so the next `arch_scan` skips re-parsing.
+- `ridge` reuses cached *analysis output* (Nodes and Edges in `internal/model`) for unchanged files, so the next `arch_scan` skips re-parsing.
 - `zilliztech/claude-context` reuses cached *embedding state* (chunks already in a Zilliz vector DB) for unchanged files, so the next `index` call skips re-embedding.
 
 The downstream caches differ; the upstream question is the same in both: what changed since last time?
 
 ## Side-by-side
 
-| Dimension | code-to-arch-mcp | zilliztech/claude-context |
+| Dimension | ridge | zilliztech/claude-context |
 |---|---|---|
 | Hash function | SHA-256 of file content | SHA-256 of file content |
 | Change detection unit | File | File |
@@ -37,7 +37,7 @@ The reveal is in `MerkleDAG.compare`. It does not exploit the recursive hashing 
 
 So the practical change-detection algorithm reduces to: hash every file fresh, compare the hash maps. The DAG layer adds no behavior beyond what a `Map<path, hash>` already gives you. It is a Merkle DAG in name and topology, not in operational benefit.
 
-This matters because it removes the apparent reason to port the structure. The `code-to-arch-mcp` design (`internal/scanner/filestate.go::DetectChanges`) already does the same hash-map comparison without the ceremony.
+This matters because it removes the apparent reason to port the structure. The `ridge` design (`internal/scanner/filestate.go::DetectChanges`) already does the same hash-map comparison without the ceremony.
 
 ## Where the implementations meaningfully differ
 
@@ -55,7 +55,7 @@ This matters because it removes the apparent reason to port the structure. The `
 
 ### Concurrency posture
 
-Neither system has any locking. Both write the snapshot via a single `WriteFile` call. The blast radius differs: `claude-context` runs as a long-lived MCP server process with one Context per codebase, so concurrent calls within the same process race. `code-to-arch-mcp` writes state at the end of each `arch_scan` invocation, with each invocation being a discrete tool call; the race surface is between concurrent tool calls on the same alias, which is rare in practice. Neither would survive a serious multi-process scenario without changes.
+Neither system has any locking. Both write the snapshot via a single `WriteFile` call. The blast radius differs: `claude-context` runs as a long-lived MCP server process with one Context per codebase, so concurrent calls within the same process race. `ridge` writes state at the end of each `arch_scan` invocation, with each invocation being a discrete tool call; the race surface is between concurrent tool calls on the same alias, which is rare in practice. Neither would survive a serious multi-process scenario without changes.
 
 ## Honest verdict on porting
 
@@ -65,8 +65,8 @@ Neither system has any locking. Both write the snapshot via a single `WriteFile`
 
 **Real gaps in both systems:**
 
-- **Sub-file granularity.** Neither hashes per-symbol or per-AST-node. A one-line change in a 2000-line file invalidates the whole file's cache. For `code-to-arch-mcp` this means re-parsing and re-emitting all Nodes and Edges from that file, even though most are stable. The interesting Merkle design that would matter is per-symbol: hash each top-level declaration, build a small per-file DAG of declarations, propagate hashes upward only when a declaration changes. That would let `arch_scan` reuse stable Nodes from a partially-changed file.
-- **Rename detection.** Both treat a rename as delete + add. For `code-to-arch-mcp`, a rename triggers full re-analysis of the file even when content is byte-identical. A content-keyed index alongside the path-keyed one would let renames update metadata without re-analysis.
+- **Sub-file granularity.** Neither hashes per-symbol or per-AST-node. A one-line change in a 2000-line file invalidates the whole file's cache. For `ridge` this means re-parsing and re-emitting all Nodes and Edges from that file, even though most are stable. The interesting Merkle design that would matter is per-symbol: hash each top-level declaration, build a small per-file DAG of declarations, propagate hashes upward only when a declaration changes. That would let `arch_scan` reuse stable Nodes from a partially-changed file.
+- **Rename detection.** Both treat a rename as delete + add. For `ridge`, a rename triggers full re-analysis of the file even when content is byte-identical. A content-keyed index alongside the path-keyed one would let renames update metadata without re-analysis.
 - **Concurrency.** Both will lose work under genuine concurrent writes. A simple advisory file lock around the snapshot save would close the obvious race.
 
 ## If sub-file change detection becomes interesting
@@ -75,7 +75,7 @@ The claude-context implementation is not a useful starting point for that work. 
 
 ## References
 
-`code-to-arch-mcp`:
+`ridge`:
 
 - `internal/scanner/filestate.go` (full file, 156 lines)
 - `internal/scanner/scanner.go:30,58` (ScanState integration)

@@ -10,12 +10,12 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/olgasafonova/code-to-arch-mcp/internal/analyzer/golang"
-	"github.com/olgasafonova/code-to-arch-mcp/internal/analyzer/python"
-	"github.com/olgasafonova/code-to-arch-mcp/internal/analyzer/typescript"
-	"github.com/olgasafonova/code-to-arch-mcp/internal/model"
-	"github.com/olgasafonova/code-to-arch-mcp/internal/render"
-	"github.com/olgasafonova/code-to-arch-mcp/internal/scanner"
+	"github.com/olgasafonova/ridge/internal/analyzer/golang"
+	"github.com/olgasafonova/ridge/internal/analyzer/python"
+	"github.com/olgasafonova/ridge/internal/analyzer/typescript"
+	"github.com/olgasafonova/ridge/internal/model"
+	"github.com/olgasafonova/ridge/internal/render"
+	"github.com/olgasafonova/ridge/internal/scanner"
 )
 
 func newScanner(t *testing.T) *scanner.Scanner {

@@ -1,4 +1,4 @@
-// Package registry manages a persistent repo registry at ~/.mcp-context/code-to-arch/.
+// Package registry manages a persistent repo registry at ~/.mcp-context/ridge/.
 // Repos registered by alias enable incremental scan state persistence and
 // path resolution by name instead of absolute path.
 package registry
@@ -9,11 +9,11 @@ import (
 	"path/filepath"
 	"time"
 
-	"github.com/olgasafonova/code-to-arch-mcp/internal/infra"
+	"github.com/olgasafonova/ridge/internal/infra"
 )
 
 const (
-	serverName   = "code-to-arch"
+	serverName   = "ridge"
 	registryFile = "registry.json"
 	stateSubdir  = "state"
 )

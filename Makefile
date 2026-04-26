@@ -1,7 +1,7 @@
 .PHONY: build test check lint vet fmt-check clean
 
 BINARY := code-to-arch
-CMD := ./cmd/code-to-arch
+CMD := ./cmd/ridge
 
 build:
 	go build -o $(BINARY) $(CMD)

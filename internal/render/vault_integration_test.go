@@ -8,9 +8,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/olgasafonova/code-to-arch-mcp/internal/analyzer/markdown"
-	"github.com/olgasafonova/code-to-arch-mcp/internal/render"
-	"github.com/olgasafonova/code-to-arch-mcp/internal/scanner"
+	"github.com/olgasafonova/ridge/internal/analyzer/markdown"
+	"github.com/olgasafonova/ridge/internal/render"
+	"github.com/olgasafonova/ridge/internal/scanner"
 )
 
 // TestVaultRender scans a markdown directory and writes Mermaid + HTML

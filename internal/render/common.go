@@ -4,7 +4,7 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/olgasafonova/code-to-arch-mcp/internal/model"
+	"github.com/olgasafonova/ridge/internal/model"
 )
 
 // FilterNodesByViewLevel filters nodes based on the requested view level.

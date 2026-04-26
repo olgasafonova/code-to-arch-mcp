@@ -4,7 +4,7 @@ import (
 	"math"
 	"testing"
 
-	"github.com/olgasafonova/code-to-arch-mcp/internal/model"
+	"github.com/olgasafonova/ridge/internal/model"
 )
 
 // buildTestGraph creates a graph that mirrors real scanner output:

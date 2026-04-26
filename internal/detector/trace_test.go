@@ -3,7 +3,7 @@ package detector
 import (
 	"testing"
 
-	"github.com/olgasafonova/code-to-arch-mcp/internal/model"
+	"github.com/olgasafonova/ridge/internal/model"
 )
 
 func TestComputeTraces_LinearChain(t *testing.T) {

@@ -3,7 +3,7 @@ package detector
 import (
 	"testing"
 
-	"github.com/olgasafonova/code-to-arch-mcp/internal/model"
+	"github.com/olgasafonova/ridge/internal/model"
 )
 
 // buildBlastGraph constructs a small dependency graph for blast-radius tests.

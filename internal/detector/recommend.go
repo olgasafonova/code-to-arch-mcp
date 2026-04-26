@@ -5,7 +5,7 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/olgasafonova/code-to-arch-mcp/internal/model"
+	"github.com/olgasafonova/ridge/internal/model"
 )
 
 // Recommendation represents a single architecture improvement suggestion.

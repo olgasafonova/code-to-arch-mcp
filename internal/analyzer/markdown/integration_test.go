@@ -9,9 +9,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/olgasafonova/code-to-arch-mcp/internal/analyzer/markdown"
-	"github.com/olgasafonova/code-to-arch-mcp/internal/model"
-	"github.com/olgasafonova/code-to-arch-mcp/internal/scanner"
+	"github.com/olgasafonova/ridge/internal/analyzer/markdown"
+	"github.com/olgasafonova/ridge/internal/model"
+	"github.com/olgasafonova/ridge/internal/scanner"
 )
 
 // TestVaultIntegration scans a real markdown directory and reports orphans/hubs.

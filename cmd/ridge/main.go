@@ -12,12 +12,12 @@ import (
 	"syscall"
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
-	"github.com/olgasafonova/code-to-arch-mcp/tools"
-	"github.com/olgasafonova/code-to-arch-mcp/tracing"
+	"github.com/olgasafonova/ridge/tools"
+	"github.com/olgasafonova/ridge/tracing"
 )
 
 const (
-	ServerName    = "code-to-arch-mcp"
+	ServerName    = "ridge"
 	ServerVersion = "0.1.0"
 )
 

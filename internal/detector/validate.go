@@ -3,7 +3,7 @@ package detector
 import (
 	"fmt"
 
-	"github.com/olgasafonova/code-to-arch-mcp/internal/model"
+	"github.com/olgasafonova/ridge/internal/model"
 )
 
 // Violation represents a single architecture violation.

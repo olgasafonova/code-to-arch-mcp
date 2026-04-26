@@ -10,9 +10,9 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/olgasafonova/code-to-arch-mcp/internal/analyzer/common"
-	"github.com/olgasafonova/code-to-arch-mcp/internal/model"
-	"github.com/olgasafonova/code-to-arch-mcp/internal/scanner"
+	"github.com/olgasafonova/ridge/internal/analyzer/common"
+	"github.com/olgasafonova/ridge/internal/model"
+	"github.com/olgasafonova/ridge/internal/scanner"
 )
 
 // Analyzer implements the scanner.Analyzer interface for Go source files.

@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/olgasafonova/code-to-arch-mcp/internal/model"
+	"github.com/olgasafonova/ridge/internal/model"
 )
 
 func TestDrawIO_ValidXML(t *testing.T) {

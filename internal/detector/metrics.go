@@ -1,7 +1,7 @@
 package detector
 
 import (
-	"github.com/olgasafonova/code-to-arch-mcp/internal/model"
+	"github.com/olgasafonova/ridge/internal/model"
 )
 
 // Metrics holds architecture fitness scores.

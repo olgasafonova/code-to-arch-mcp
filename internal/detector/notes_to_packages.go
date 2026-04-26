@@ -6,7 +6,7 @@ import (
 	"regexp"
 	"strings"
 
-	"github.com/olgasafonova/code-to-arch-mcp/internal/model"
+	"github.com/olgasafonova/ridge/internal/model"
 )
 
 // LinkNotesToPackages is a spike implementation of cross-substrate edges:

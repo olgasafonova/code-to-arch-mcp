@@ -14,7 +14,7 @@ A 30-second clip showing the tool turning code into a graph in real time.
 
 1. Pick the target. A medium repo (50-500 files) plus a markdown directory
    makes the dual-substrate story clear. Suggestions:
-   - Code: this repo (`~/Projects/code-to-arch-mcp`) or any public Go project
+   - Code: this repo (`~/Projects/ridge`) or any public Go project
    - Markdown: a small Obsidian vault or `docs/` of an OSS project
 2. Open Claude Code (or another MCP client) on the left half of the screen.
 3. Open a browser on the right half. Keep it on a blank tab to start.
@@ -66,7 +66,7 @@ with:
 Then update bead `eh1`:
 
 ```bash
-bd close code-to-arch-mcp-eh1 --reason="Recorded demo GIF on <date>, embedded in README"
+bd close ridge-eh1 --reason="Recorded demo GIF on <date>, embedded in README"
 ```
 
 ## Why the recording is manual

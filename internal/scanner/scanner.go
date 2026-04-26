@@ -13,7 +13,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/olgasafonova/code-to-arch-mcp/internal/model"
+	"github.com/olgasafonova/ridge/internal/model"
 )
 
 // ErrLimitReached is returned alongside a partial graph when a scan limit is hit.

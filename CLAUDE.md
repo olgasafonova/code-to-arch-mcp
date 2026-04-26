@@ -1,10 +1,10 @@
-# Code to Arch MCP
+# Ridge
 
 ## Project
 Go MCP server that scans codebases, generates architecture diagrams, and detects when code drifts from documented architecture. Supports Go (go/ast), TypeScript, and Python (tree-sitter). Outputs Mermaid, PlantUML, C4, Structurizr DSL, draw.io XML, and Excalidraw JSON.
 
 ## Architecture
-- `cmd/code-to-arch/main.go` - entry point with stdio transport
+- `cmd/ridge/main.go` - entry point with stdio transport
 - `internal/model/` - ArchGraph, Node, Edge, Diff types (core data model)
 - `internal/scanner/` - File walker, orchestrator (discovers files and delegates to analyzers)
 - `internal/analyzer/golang/` - Go AST-based analysis (import-based deps, stdlib HTTP endpoints, infra classification)
@@ -32,12 +32,12 @@ Go MCP server that scans codebases, generates architecture diagrams, and detects
 - Language analyzers implement the Analyzer interface with `Analyze(path) ([]*Node, []*Edge, error)`
 - Scanner orchestrates: walk files -> detect changes (incremental) -> delegate to analyzer -> merge graphs
 - Incremental scanning: ScanState tracks per-file mtime + content hash; unchanged files reuse cached analysis results
-- State persists to ~/.mcp-context/code-to-arch/ via infra.StateDir() convention
+- State persists to ~/.mcp-context/ridge/ via infra.StateDir() convention
 - Renderers implement `Render(graph *ArchGraph, opts RenderOptions) (string, error)`
 - Drift detection uses exact node ID matching + edge key comparison (no fuzzy matching)
 - "USE WHEN" description pattern for optimal LLM tool selection
 - Registry aliases enable `repo` param on all tools; resolveRepoPath resolves alias to path
-- Registry-based scans persist incremental ScanState to ~/.mcp-context/code-to-arch/state/<alias>.json
+- Registry-based scans persist incremental ScanState to ~/.mcp-context/ridge/state/<alias>.json
 
 ## Build & Test
 ```bash

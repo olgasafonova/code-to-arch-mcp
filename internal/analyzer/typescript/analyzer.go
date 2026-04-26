@@ -13,9 +13,9 @@ import (
 	"github.com/smacker/go-tree-sitter/typescript/tsx"
 	"github.com/smacker/go-tree-sitter/typescript/typescript"
 
-	"github.com/olgasafonova/code-to-arch-mcp/internal/analyzer/common"
-	"github.com/olgasafonova/code-to-arch-mcp/internal/model"
-	"github.com/olgasafonova/code-to-arch-mcp/internal/scanner"
+	"github.com/olgasafonova/ridge/internal/analyzer/common"
+	"github.com/olgasafonova/ridge/internal/model"
+	"github.com/olgasafonova/ridge/internal/scanner"
 )
 
 // Analyzer implements the scanner.Analyzer interface for TypeScript/TSX files.

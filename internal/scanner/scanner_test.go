@@ -10,8 +10,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/olgasafonova/code-to-arch-mcp/internal/analyzer/golang"
-	"github.com/olgasafonova/code-to-arch-mcp/internal/scanner"
+	"github.com/olgasafonova/ridge/internal/analyzer/golang"
+	"github.com/olgasafonova/ridge/internal/scanner"
 )
 
 func writeFile(t *testing.T, dir, name, content string) {

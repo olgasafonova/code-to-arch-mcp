@@ -9,8 +9,8 @@ import (
 	"regexp"
 	"strings"
 
-	"github.com/olgasafonova/code-to-arch-mcp/internal/model"
-	"github.com/olgasafonova/code-to-arch-mcp/internal/scanner"
+	"github.com/olgasafonova/ridge/internal/model"
+	"github.com/olgasafonova/ridge/internal/scanner"
 )
 
 // Analyzer implements the scanner.Analyzer interface for markdown files.

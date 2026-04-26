@@ -1,6 +1,6 @@
 # Cross-substrate composition: spike findings
 
-Companion to bead `code-to-arch-mcp-edf`. Status: exploration complete,
+Companion to bead `ridge-edf`. Status: exploration complete,
 graduation decision pending.
 
 ## What the spike did
@@ -25,7 +25,7 @@ Running against the project root (Go + markdown analyzers, then
 
 ```
 note:assets/SOURCES → pkg:render/render
-note:code-to-arch-mcp/CLAUDE → pkg:code-to-arch/main, pkg:model/model,
+note:ridge/CLAUDE → pkg:code-to-arch/main, pkg:model/model,
                                pkg:scanner/scanner, pkg:golang/golang,
                                pkg:typescript/typescript, pkg:python/python,
                                pkg:detector/detector, pkg:render/render,

@@ -9,11 +9,11 @@ import (
 	"testing"
 	"time"
 
-	"github.com/olgasafonova/code-to-arch-mcp/internal/analyzer/golang"
-	"github.com/olgasafonova/code-to-arch-mcp/internal/analyzer/markdown"
-	"github.com/olgasafonova/code-to-arch-mcp/internal/detector"
-	"github.com/olgasafonova/code-to-arch-mcp/internal/model"
-	"github.com/olgasafonova/code-to-arch-mcp/internal/scanner"
+	"github.com/olgasafonova/ridge/internal/analyzer/golang"
+	"github.com/olgasafonova/ridge/internal/analyzer/markdown"
+	"github.com/olgasafonova/ridge/internal/detector"
+	"github.com/olgasafonova/ridge/internal/model"
+	"github.com/olgasafonova/ridge/internal/scanner"
 )
 
 // TestLinkNotesToPackages_ThisRepo runs the cross-substrate spike against the

@@ -1,4 +1,4 @@
-module github.com/olgasafonova/code-to-arch-mcp
+module github.com/olgasafonova/ridge
 
 go 1.25.0
 
