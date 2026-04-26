@@ -17,84 +17,118 @@ const (
 	excaliMarginY = 60
 )
 
+// excaliPortAssign carries the start/end attachment fractions for one edge.
+type excaliPortAssign struct {
+	startFrac, endFrac float64
+	outRank, outTotal  int
+}
+
+// excaliBounds tracks the rectangular bounds of a node-type group.
+type excaliBounds struct {
+	minX, minY, maxX, maxY int
+}
+
+// excaliSeed produces deterministic, monotonically-increasing seeds so the
+// same graph renders identically across runs.
+type excaliSeed struct{ v int }
+
+func (s *excaliSeed) next() int {
+	s.v += 7
+	return s.v
+}
+
+const excaliGroupPad = 16
+
 // Excalidraw renders an ArchGraph as Excalidraw JSON.
 // Nodes are arranged in topological layers: root packages at the top,
 // leaf dependencies at the bottom. Arrows use orthogonal routing.
 func Excalidraw(graph *model.ArchGraph, opts Options) string {
 	vg := PrepareGraph(graph, opts)
 	vg.TransitiveReduce()
-	nodePositions := make(map[string][2]int) // id -> [x, y]
 
-	elements := make([]map[string]any, 0)
-	seed := 1000000
+	depths, maxDepth := excaliComputeDepths(vg)
+	layers := excaliGroupByDepth(vg, depths, maxDepth)
+	BarycenterOrder(layers, vg.Edges)
 
-	nextSeed := func() int {
-		seed += 7
-		return seed
-	}
+	seed := &excaliSeed{v: 1000000}
+	maxWidth := excaliLayoutWidth(layers)
 
-	// Build adjacency for topological layering.
-	outgoing := make(map[string][]string)
-	nodeByID := make(map[string]*model.Node)
+	nodeElements, positions, groupBounds := excaliLayoutNodes(layers, maxDepth, maxWidth, seed)
+	groupElements := excaliBuildGroupFrames(groupBounds, seed)
+
+	portMap := excaliDistributePorts(vg, positions)
+	arrowElements := excaliBuildArrows(vg, portMap, positions, seed)
+
+	elements := make([]map[string]any, 0, len(groupElements)+len(nodeElements)+len(arrowElements))
+	elements = append(elements, groupElements...)
+	elements = append(elements, nodeElements...)
+	elements = append(elements, arrowElements...)
+
+	return excaliMarshal(elements)
+}
+
+// excaliComputeDepths returns each node's depth (longest outgoing path) and
+// the overall maximum depth.
+func excaliComputeDepths(vg *VisibleGraph) (map[string]int, int) {
+	nodeIDs := make(map[string]bool, len(vg.Nodes))
 	for _, n := range vg.Nodes {
-		nodeByID[n.ID] = n
+		nodeIDs[n.ID] = true
 	}
+
+	outgoing := make(map[string][]string)
 	for _, e := range vg.Edges {
-		if _, ok := nodeByID[e.Source]; !ok {
-			continue
-		}
-		if _, ok := nodeByID[e.Target]; !ok {
+		if !nodeIDs[e.Source] || !nodeIDs[e.Target] {
 			continue
 		}
 		outgoing[e.Source] = append(outgoing[e.Source], e.Target)
 	}
 
-	// Compute depth = longest path through outgoing edges.
-	depth := make(map[string]int)
+	depths := make(map[string]int, len(vg.Nodes))
 	computing := make(map[string]bool)
 
-	var computeDepth func(string) int
-	computeDepth = func(id string) int {
-		if d, ok := depth[id]; ok {
+	var compute func(string) int
+	compute = func(id string) int {
+		if d, ok := depths[id]; ok {
 			return d
 		}
 		if computing[id] {
-			return 0
+			return 0 // cycle: tie-break at depth 0
 		}
 		computing[id] = true
 		maxChild := -1
 		for _, t := range outgoing[id] {
-			if cd := computeDepth(t); cd > maxChild {
+			if cd := compute(t); cd > maxChild {
 				maxChild = cd
 			}
 		}
 		d := maxChild + 1
-		depth[id] = d
+		depths[id] = d
 		delete(computing, id)
 		return d
 	}
 
-	for _, n := range vg.Nodes {
-		computeDepth(n.ID)
-	}
-
-	// Group nodes by depth layer.
 	maxDepth := 0
-	for _, d := range depth {
-		if d > maxDepth {
+	for _, n := range vg.Nodes {
+		if d := compute(n.ID); d > maxDepth {
 			maxDepth = d
 		}
 	}
+	return depths, maxDepth
+}
 
-	layerNodes := make([][]*model.Node, maxDepth+1)
+// excaliGroupByDepth buckets nodes into depth layers (index 0 = leaves).
+func excaliGroupByDepth(vg *VisibleGraph, depths map[string]int, maxDepth int) [][]*model.Node {
+	layers := make([][]*model.Node, maxDepth+1)
 	for _, n := range vg.Nodes {
-		layerNodes[depth[n.ID]] = append(layerNodes[depth[n.ID]], n)
+		layers[depths[n.ID]] = append(layers[depths[n.ID]], n)
 	}
+	return layers
+}
 
-	BarycenterOrder(layerNodes, vg.Edges)
-
+// excaliLayoutWidth returns the canvas width needed for the widest layer.
+func excaliLayoutWidth(layers [][]*model.Node) int {
 	maxCount := 0
-	for _, nodes := range layerNodes {
+	for _, nodes := range layers {
 		if len(nodes) > maxCount {
 			maxCount = len(nodes)
 		}
@@ -102,18 +136,18 @@ func Excalidraw(graph *model.ArchGraph, opts Options) string {
 	if maxCount == 0 {
 		maxCount = 1
 	}
-	maxWidth := maxCount*excaliCellW + (maxCount-1)*excaliGapX
+	return maxCount*excaliCellW + (maxCount-1)*excaliGapX
+}
 
-	// Track group bounds by NodeType for visual clustering.
-	type bounds struct {
-		minX, minY, maxX, maxY int
-	}
-	groupBounds := make(map[model.NodeType]*bounds)
-	groupPad := 16
+// excaliLayoutNodes assigns a position to each node, emits its rect+text
+// elements, and tracks the bounds of each NodeType group.
+func excaliLayoutNodes(layers [][]*model.Node, maxDepth, maxWidth int, seed *excaliSeed) ([]map[string]any, map[string][2]int, map[model.NodeType]*excaliBounds) {
+	elements := make([]map[string]any, 0)
+	positions := make(map[string][2]int)
+	groupBounds := make(map[model.NodeType]*excaliBounds)
 
-	// Position: highest depth at top (row 0), depth 0 at bottom.
 	for d := maxDepth; d >= 0; d-- {
-		nodes := layerNodes[d]
+		nodes := layers[d]
 		row := maxDepth - d
 		layerWidth := len(nodes)*excaliCellW + (len(nodes)-1)*excaliGapX
 		offsetX := (maxWidth - layerWidth) / 2
@@ -123,65 +157,70 @@ func Excalidraw(graph *model.ArchGraph, opts Options) string {
 			y := excaliMarginY + row*(excaliCellH+excaliGapY)
 
 			rectID := SanitizeID(n.ID)
-			textID := rectID + "_text"
-			nodePositions[n.ID] = [2]int{x, y}
+			positions[n.ID] = [2]int{x, y}
 
 			bgColor := excalidrawBgColor(n.Type)
+			elements = append(elements, excaliRect(rectID, x, y, excaliCellW, excaliCellH, bgColor, seed.next()))
+			elements = append(elements, excaliText(rectID+"_text", x+10, y+20, excaliCellW-20, 25, n.Name, 16, &rectID, seed.next()))
 
-			elements = append(elements, excaliRect(rectID, x, y, excaliCellW, excaliCellH, bgColor, nextSeed()))
-			elements = append(elements, excaliText(textID, x+10, y+20, excaliCellW-20, 25, n.Name, 16, &rectID, nextSeed()))
-
-			// Expand group bounds.
-			b := groupBounds[n.Type]
-			if b == nil {
-				b = &bounds{minX: x, minY: y, maxX: x + excaliCellW, maxY: y + excaliCellH}
-				groupBounds[n.Type] = b
-			} else {
-				if x < b.minX {
-					b.minX = x
-				}
-				if y < b.minY {
-					b.minY = y
-				}
-				if x+excaliCellW > b.maxX {
-					b.maxX = x + excaliCellW
-				}
-				if y+excaliCellH > b.maxY {
-					b.maxY = y + excaliCellH
-				}
-			}
+			expandGroupBounds(groupBounds, n.Type, x, y)
 		}
 	}
+	return elements, positions, groupBounds
+}
 
-	// Add group frame elements (rendered behind nodes via order).
-	var groupElements []map[string]any
+// expandGroupBounds widens (or initializes) the bounds for a NodeType group
+// to enclose a cell at (x, y).
+func expandGroupBounds(groupBounds map[model.NodeType]*excaliBounds, t model.NodeType, x, y int) {
+	b := groupBounds[t]
+	if b == nil {
+		groupBounds[t] = &excaliBounds{minX: x, minY: y, maxX: x + excaliCellW, maxY: y + excaliCellH}
+		return
+	}
+	if x < b.minX {
+		b.minX = x
+	}
+	if y < b.minY {
+		b.minY = y
+	}
+	if x+excaliCellW > b.maxX {
+		b.maxX = x + excaliCellW
+	}
+	if y+excaliCellH > b.maxY {
+		b.maxY = y + excaliCellH
+	}
+}
+
+// excaliBuildGroupFrames emits a translucent backdrop rect + label for each
+// NodeType cluster. Returned in iteration order (Excalidraw renders in the
+// order it gets, so callers must prepend to keep frames behind nodes).
+func excaliBuildGroupFrames(groupBounds map[model.NodeType]*excaliBounds, seed *excaliSeed) []map[string]any {
+	if len(groupBounds) == 0 {
+		return nil
+	}
+	out := make([]map[string]any, 0, 2*len(groupBounds))
 	for nt, b := range groupBounds {
-		gx := b.minX - groupPad
-		gy := b.minY - groupPad - 24
-		gw := b.maxX - b.minX + 2*groupPad
-		gh := b.maxY - b.minY + 2*groupPad + 24
+		gx := b.minX - excaliGroupPad
+		gy := b.minY - excaliGroupPad - 24
+		gw := b.maxX - b.minX + 2*excaliGroupPad
+		gh := b.maxY - b.minY + 2*excaliGroupPad + 24
 
 		frameID := fmt.Sprintf("group_%s", SanitizeID(string(nt)))
-		labelID := frameID + "_label"
-
-		frame := excaliRect(frameID, gx, gy, gw, gh, excalidrawBgColor(nt), nextSeed())
+		frame := excaliRect(frameID, gx, gy, gw, gh, excalidrawBgColor(nt), seed.next())
 		frame["opacity"] = 20
 		frame["strokeColor"] = excalidrawBgColor(nt)
-		groupElements = append(groupElements, frame)
+		out = append(out, frame)
+		out = append(out, excaliText(frameID+"_label", gx+8, gy+4, gw-16, 20, drawIOGroupLabel(nt), 12, nil, seed.next()))
+	}
+	return out
+}
 
-		groupElements = append(groupElements, excaliText(labelID, gx+8, gy+4, gw-16, 20, drawIOGroupLabel(nt), 12, nil, nextSeed()))
-	}
-	if len(groupElements) > 0 {
-		elements = append(groupElements, elements...)
-	}
+// excaliDistributePorts assigns start/end attachment fractions across each
+// node's width so multiple edges sharing a source or target are visually
+// separated rather than overlapping at the cell midpoint.
+func excaliDistributePorts(vg *VisibleGraph, positions map[string][2]int) map[int]excaliPortAssign {
+	portMap := make(map[int]excaliPortAssign, len(vg.Edges))
 
-	// Port distribution: sort outgoing edges by target X and incoming
-	// edges by source X, then spread attachment points across node width.
-	type portAssign struct {
-		startFrac, endFrac float64
-		outRank, outTotal  int
-	}
-	portMap := make(map[int]portAssign)
 	edgesBySource := make(map[string][]int)
 	edgesByTarget := make(map[string][]int)
 	for i, e := range vg.Edges {
@@ -189,10 +228,24 @@ func Excalidraw(graph *model.ArchGraph, opts Options) string {
 		edgesByTarget[e.Target] = append(edgesByTarget[e.Target], i)
 	}
 
-	for _, indices := range edgesBySource {
+	excaliAssignFractions(portMap, edgesBySource, vg, positions, true)
+	excaliAssignFractions(portMap, edgesByTarget, vg, positions, false)
+	return portMap
+}
+
+// excaliAssignFractions sorts edges sharing a source (or target) by the
+// position of the opposite endpoint, then spreads start (or end) fractions
+// across [0.15, 0.85].
+func excaliAssignFractions(portMap map[int]excaliPortAssign, groups map[string][]int, vg *VisibleGraph, positions map[string][2]int, isSource bool) {
+	for _, indices := range groups {
 		sort.Slice(indices, func(a, b int) bool {
-			return nodePositions[vg.Edges[indices[a]].Target][0] <
-				nodePositions[vg.Edges[indices[b]].Target][0]
+			otherA := vg.Edges[indices[a]].Target
+			otherB := vg.Edges[indices[b]].Target
+			if !isSource {
+				otherA = vg.Edges[indices[a]].Source
+				otherB = vg.Edges[indices[b]].Source
+			}
+			return positions[otherA][0] < positions[otherB][0]
 		})
 		n := len(indices)
 		for rank, idx := range indices {
@@ -201,34 +254,24 @@ func Excalidraw(graph *model.ArchGraph, opts Options) string {
 				frac = 0.15 + 0.7*float64(rank)/float64(n-1)
 			}
 			pa := portMap[idx]
-			pa.startFrac = frac
-			pa.outRank = rank
-			pa.outTotal = n
-			portMap[idx] = pa
-		}
-	}
-
-	for _, indices := range edgesByTarget {
-		sort.Slice(indices, func(a, b int) bool {
-			return nodePositions[vg.Edges[indices[a]].Source][0] <
-				nodePositions[vg.Edges[indices[b]].Source][0]
-		})
-		n := len(indices)
-		for rank, idx := range indices {
-			frac := 0.5
-			if n > 1 {
-				frac = 0.15 + 0.7*float64(rank)/float64(n-1)
+			if isSource {
+				pa.startFrac = frac
+				pa.outRank = rank
+				pa.outTotal = n
+			} else {
+				pa.endFrac = frac
 			}
-			pa := portMap[idx]
-			pa.endFrac = frac
 			portMap[idx] = pa
 		}
 	}
+}
 
-	// Arrows with orthogonal routing and all required Excalidraw properties.
+// excaliBuildArrows produces the arrow elements with orthogonal routing.
+func excaliBuildArrows(vg *VisibleGraph, portMap map[int]excaliPortAssign, positions map[string][2]int, seed *excaliSeed) []map[string]any {
+	out := make([]map[string]any, 0, len(vg.Edges))
 	for i, e := range vg.Edges {
-		srcPos := nodePositions[e.Source]
-		tgtPos := nodePositions[e.Target]
+		srcPos := positions[e.Source]
+		tgtPos := positions[e.Target]
 		pa := portMap[i]
 
 		startX := float64(srcPos[0]) + pa.startFrac*float64(excaliCellW)
@@ -236,33 +279,36 @@ func Excalidraw(graph *model.ArchGraph, opts Options) string {
 		endX := float64(tgtPos[0]) + pa.endFrac*float64(excaliCellW)
 		endY := float64(tgtPos[1])
 
-		dx := endX - startX
-		dy := endY - startY
-		arrowID := fmt.Sprintf("arrow_%d", i)
-
-		var points [][2]float64
-		absDx := dx
-		if absDx < 0 {
-			absDx = -absDx
-		}
-		if absDx < 10 {
-			points = [][2]float64{{0, 0}, {0, dy}}
-		} else {
-			channelDY := 30.0
-			if pa.outTotal > 1 {
-				channelDY = 30 + float64(excaliGapY-60)*float64(pa.outRank)/float64(pa.outTotal-1)
-			}
-			points = [][2]float64{
-				{0, 0},
-				{0, channelDY},
-				{dx, channelDY},
-				{dx, dy},
-			}
-		}
-
-		elements = append(elements, excaliArrow(arrowID, startX, startY, points, nextSeed()))
+		out = append(out, excaliArrow(fmt.Sprintf("arrow_%d", i), startX, startY, excaliRoutePoints(endX-startX, endY-startY, pa), seed.next()))
 	}
+	return out
+}
 
+// excaliRoutePoints returns the orthogonal-routing waypoints for an arrow.
+// Short horizontal deltas use a single straight segment; longer ones detour
+// through a fan-out channel keyed off the source's outgoing rank.
+func excaliRoutePoints(dx, dy float64, pa excaliPortAssign) [][2]float64 {
+	absDx := dx
+	if absDx < 0 {
+		absDx = -absDx
+	}
+	if absDx < 10 {
+		return [][2]float64{{0, 0}, {0, dy}}
+	}
+	channelDY := 30.0
+	if pa.outTotal > 1 {
+		channelDY = 30 + float64(excaliGapY-60)*float64(pa.outRank)/float64(pa.outTotal-1)
+	}
+	return [][2]float64{
+		{0, 0},
+		{0, channelDY},
+		{dx, channelDY},
+		{dx, dy},
+	}
+}
+
+// excaliMarshal wraps a complete element list in the Excalidraw envelope.
+func excaliMarshal(elements []map[string]any) string {
 	file := map[string]any{
 		"type":     "excalidraw",
 		"version":  2,
@@ -271,7 +317,6 @@ func Excalidraw(graph *model.ArchGraph, opts Options) string {
 		"appState": map[string]any{"viewBackgroundColor": "#ffffff"},
 		"files":    map[string]any{},
 	}
-
 	data, _ := json.MarshalIndent(file, "", "  ")
 	return string(data)
 }
