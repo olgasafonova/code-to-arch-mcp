@@ -57,7 +57,7 @@ func HTML(graph *model.ArchGraph, opts Options) string {
 	sb.WriteString("<script>\n")
 	sb.WriteString(mermaidJS)
 	sb.WriteString("\n</script>\n")
-	sb.WriteString("<script>mermaid.initialize({startOnLoad:true,securityLevel:\"strict\",theme:\"default\"});</script>\n")
+	sb.WriteString("<script>mermaid.initialize({startOnLoad:true,securityLevel:\"strict\",theme:\"default\",maxTextSize:1000000,maxEdges:5000});</script>\n")
 	sb.WriteString("</body>\n</html>\n")
 	return sb.String()
 }

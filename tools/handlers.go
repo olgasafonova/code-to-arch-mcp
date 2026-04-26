@@ -14,6 +14,7 @@ import (
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 	"github.com/olgasafonova/code-to-arch-mcp/internal/analyzer/golang"
+	"github.com/olgasafonova/code-to-arch-mcp/internal/analyzer/markdown"
 	"github.com/olgasafonova/code-to-arch-mcp/internal/analyzer/python"
 	"github.com/olgasafonova/code-to-arch-mcp/internal/analyzer/typescript"
 	"github.com/olgasafonova/code-to-arch-mcp/internal/detector"
@@ -39,7 +40,8 @@ func NewHandlerRegistry(logger *slog.Logger) *HandlerRegistry {
 	goAnalyzer := golang.New()
 	tsAnalyzer := typescript.New()
 	pyAnalyzer := python.New()
-	s := scanner.New(logger, goAnalyzer, tsAnalyzer, pyAnalyzer)
+	mdAnalyzer := markdown.New()
+	s := scanner.New(logger, goAnalyzer, tsAnalyzer, pyAnalyzer, mdAnalyzer)
 
 	reg, err := registry.Load()
 	if err != nil {
@@ -311,6 +313,7 @@ type ArchGenerateArgs struct {
 	ThemeBG        string  `json:"theme_bg,omitempty"`
 	ThemeFG        string  `json:"theme_fg,omitempty"`
 	PruneThreshold float64 `json:"prune_threshold,omitempty"`
+	MinDegree      int     `json:"min_degree,omitempty"`
 	ScanControl
 }
 
@@ -360,6 +363,9 @@ func (h *HandlerRegistry) archGenerate(ctx context.Context, args ArchGenerateArg
 	if args.PruneThreshold > 0 {
 		opts.PruneThreshold = args.PruneThreshold
 	}
+	if args.MinDegree > 0 {
+		opts.MinDegree = args.MinDegree
+	}
 
 	var diagram string
 	switch opts.Format {
@@ -379,8 +385,10 @@ func (h *HandlerRegistry) archGenerate(ctx context.Context, args ArchGenerateArg
 		diagram = render.Excalidraw(graph, opts)
 	case render.FormatHTML:
 		diagram = render.HTML(graph, opts)
+	case render.FormatForceGraph:
+		diagram = render.ForceGraph(graph, opts)
 	default:
-		return nil, fmt.Errorf("unsupported format: %s (supported: mermaid, plantuml, c4, structurizr, json, drawio, excalidraw, html)", args.Format)
+		return nil, fmt.Errorf("unsupported format: %s (supported: mermaid, plantuml, c4, structurizr, json, drawio, excalidraw, html, forcegraph)", args.Format)
 	}
 
 	// Report which nodes were pruned (if any).

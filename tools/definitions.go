@@ -27,10 +27,11 @@ var AllTools = []ToolSpec{
 		Description: `Analyze a codebase directory and generate an architecture model.
 USE WHEN the user wants to understand the overall architecture of a project,
 discover services, dependencies, and infrastructure components.
+Also works on markdown directories (Obsidian vaults, doc trees) — each note becomes a node, wiki-links [[note]] and relative .md links become dependency edges.
 Returns a summary by default; set detail="full" for the complete node/edge graph.
 For a single service or subdirectory, use arch_focus instead.
-WHY: Parses Go with go/ast, TypeScript and Python with tree-sitter. Detects dependencies from import statements only; dynamic loading, reflection, or runtime service discovery is invisible.
-FAILS WHEN: directory path doesn't exist (check path and retry), directory contains no supported code files in Go/TypeScript/Python (other languages are not yet supported).`,
+WHY: Parses Go with go/ast, TypeScript and Python with tree-sitter, markdown with link extraction. Detects dependencies from import statements only; dynamic loading, reflection, or runtime service discovery is invisible.
+FAILS WHEN: directory path doesn't exist (check path and retry), directory contains no supported files (Go, TypeScript, Python, or markdown).`,
 		Category:   "analysis",
 		ReadOnly:   true,
 		Idempotent: true,
@@ -42,7 +43,7 @@ FAILS WHEN: directory path doesn't exist (check path and retry), directory conta
 		Description: `Analyze a specific subdirectory or service within a codebase.
 USE WHEN the user wants to zoom into one service or module, not the entire project.
 Pass a subdirectory path; returns the same format as arch_scan scoped to that subtree.
-FAILS WHEN: subdirectory path doesn't exist (check path), no supported code files in that subtree (Go/TypeScript/Python only).`,
+FAILS WHEN: subdirectory path doesn't exist (check path), no supported files in that subtree (Go, TypeScript, Python, or markdown).`,
 		Category:   "analysis",
 		ReadOnly:   true,
 		Idempotent: true,
@@ -53,12 +54,14 @@ FAILS WHEN: subdirectory path doesn't exist (check path), no supported code file
 		Title:  "Generate Architecture Diagram",
 		Description: `Generate a diagram from a scanned architecture in the specified format.
 USE WHEN the user wants a visual representation of the architecture.
-Supports Mermaid, PlantUML, C4, Structurizr DSL, draw.io, Excalidraw, JSON, and HTML output.
+Supports Mermaid, PlantUML, C4, Structurizr DSL, draw.io, Excalidraw, JSON, HTML, and forcegraph output.
 View levels: system (high-level), container (services + infra), component (all packages).
 The HTML format produces a self-contained page with the Mermaid runtime embedded inline (~900 KB output, no network requests when opened). Use HTML for human-facing review and link sharing. For Go MCP servers, HTML defaults to the component view because the container view returns near-empty output (packages and endpoints, no service-type nodes); pass view_level=container explicitly to override.
+The forcegraph format produces a self-contained D3-driven force-directed page (~290 KB output) with drag-to-rearrange, wheel zoom, pan. Use forcegraph for hub-spoke graphs (knowledge vaults, doc trees, dense dependency networks) where Mermaid's hierarchical layout produces a long horizontal stripe.
 Optional theme_bg and theme_fg hex colors (e.g. "#ffffff", "#1e293b") derive a full Mermaid color palette from two colors. Works with Mermaid and HTML formats.
 Set prune_threshold (0.0-1.0) to remove ubiquitous nodes like logging or fmt that clutter diagrams. A value of 0.5 removes nodes targeted by more than 50% of source nodes.
-FAILS WHEN: no architecture data loaded (run arch_scan or arch_focus first), invalid format name (valid: mermaid, plantuml, c4, structurizr, drawio, excalidraw, json, html).`,
+Set min_degree (integer >= 1) to drop nodes whose total in+out degree is below the threshold — useful for knowledge graphs / Obsidian vaults where Mermaid's hierarchical layout breaks down past ~50 nodes. min_degree=5 typically reduces a 300-note vault to its hubs.
+FAILS WHEN: no architecture data loaded (run arch_scan or arch_focus first), invalid format name (valid: mermaid, plantuml, c4, structurizr, drawio, excalidraw, json, html, forcegraph).`,
 		Category:   "diagram",
 		ReadOnly:   true,
 		Idempotent: true,

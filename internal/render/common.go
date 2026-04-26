@@ -18,7 +18,7 @@ func FilterNodesByViewLevel(nodes []*model.Node, level ViewLevel) []*model.Node 
 				result = append(result, n)
 			}
 		case ViewContainer:
-			// Services, databases, queues, caches, external APIs
+			// Services, databases, queues, caches, external APIs, notes
 			if n.Type != model.NodePackage && n.Type != model.NodeEndpoint {
 				result = append(result, n)
 			}
@@ -267,16 +267,73 @@ func PruneSuperNodes(vg *VisibleGraph, threshold float64) []string {
 	return prunedNames
 }
 
+// KeepHighDegree drops nodes whose total degree (incoming + outgoing edges)
+// is below minDegree. The complement of PruneSuperNodes: instead of removing
+// the most-connected nodes, it removes the least-connected ones — useful for
+// knowledge-graph-shaped inputs (vaults, doc trees) where the meaningful
+// structure is a small set of hubs and most files are leaves.
+//
+// Applied iteratively until stable: a node that loses all its edges because
+// its only neighbors were leaves below the threshold is itself dropped. This
+// prevents marooned-hub artifacts in the rendered output.
+func KeepHighDegree(vg *VisibleGraph, minDegree int) {
+	if minDegree <= 0 || len(vg.Nodes) == 0 {
+		return
+	}
+	for {
+		degree := make(map[string]int, len(vg.Nodes))
+		for _, e := range vg.Edges {
+			degree[e.Source]++
+			degree[e.Target]++
+		}
+
+		keep := make(map[string]bool, len(vg.Nodes))
+		dropped := 0
+		for _, n := range vg.Nodes {
+			if degree[n.ID] >= minDegree {
+				keep[n.ID] = true
+			} else {
+				dropped++
+			}
+		}
+		if dropped == 0 {
+			return
+		}
+
+		filtered := vg.Nodes[:0]
+		for _, n := range vg.Nodes {
+			if keep[n.ID] {
+				filtered = append(filtered, n)
+			} else {
+				delete(vg.IDs, n.ID)
+			}
+		}
+		vg.Nodes = filtered
+
+		filteredEdges := vg.Edges[:0]
+		for _, e := range vg.Edges {
+			if keep[e.Source] && keep[e.Target] {
+				filteredEdges = append(filteredEdges, e)
+			}
+		}
+		vg.Edges = filteredEdges
+	}
+}
+
 // PrepareGraph applies view-level filtering and optional super-node pruning.
 func PrepareGraph(graph *model.ArchGraph, opts Options) *VisibleGraph {
 	vg := FilterGraph(graph, opts.ViewLevel)
 	PruneSuperNodes(vg, opts.PruneThreshold)
+	KeepHighDegree(vg, opts.MinDegree)
 	return vg
 }
 
 // SanitizeID replaces characters that are invalid in diagram node IDs.
 // Different separators use distinct replacements to avoid collisions
-// (e.g., "api/v1" and "api.v1" produce different IDs).
+// (e.g., "api/v1" and "api.v1" produce different IDs). Any remaining
+// non-alphanumeric character is replaced with a single underscore so
+// IDs derived from filesystem paths (e.g. note basenames containing
+// parens or punctuation) parse correctly across all diagram formats.
 func SanitizeID(id string) string {
 	r := strings.NewReplacer(
 		"/", "__",
@@ -285,5 +342,19 @@ func SanitizeID(id string) string {
 		" ", "_",
 		"-", "_",
 	)
-	return r.Replace(id)
+	out := r.Replace(id)
+	var sb strings.Builder
+	sb.Grow(len(out))
+	for _, ch := range out {
+		switch {
+		case ch >= 'a' && ch <= 'z',
+			ch >= 'A' && ch <= 'Z',
+			ch >= '0' && ch <= '9',
+			ch == '_':
+			sb.WriteRune(ch)
+		default:
+			sb.WriteByte('_')
+		}
+	}
+	return sb.String()
 }

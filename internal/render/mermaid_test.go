@@ -41,6 +41,103 @@ func TestMermaid_DatabaseShape(t *testing.T) {
 	}
 }
 
+func TestMermaid_MinDegreeFilterIterative(t *testing.T) {
+	g := model.NewGraph("/vault")
+	// A triangle of hubs (each has degree 2 within the triangle), plus leaves.
+	g.AddNode(&model.Node{ID: "note:h1", Name: "h1", Type: model.NodeNote})
+	g.AddNode(&model.Node{ID: "note:h2", Name: "h2", Type: model.NodeNote})
+	g.AddNode(&model.Node{ID: "note:h3", Name: "h3", Type: model.NodeNote})
+	g.AddNode(&model.Node{ID: "note:leaf1", Name: "leaf1", Type: model.NodeNote})
+	g.AddNode(&model.Node{ID: "note:leaf2", Name: "leaf2", Type: model.NodeNote})
+	g.AddNode(&model.Node{ID: "note:lonely", Name: "lonely", Type: model.NodeNote})
+
+	// Triangle: h1↔h2, h2↔h3, h3↔h1. Each hub has degree 2 within the triangle.
+	g.AddEdge(&model.Edge{Source: "note:h1", Target: "note:h2", Type: model.EdgeDependency})
+	g.AddEdge(&model.Edge{Source: "note:h2", Target: "note:h3", Type: model.EdgeDependency})
+	g.AddEdge(&model.Edge{Source: "note:h3", Target: "note:h1", Type: model.EdgeDependency})
+	// Leaves attached to h1.
+	g.AddEdge(&model.Edge{Source: "note:leaf1", Target: "note:h1", Type: model.EdgeDependency})
+	g.AddEdge(&model.Edge{Source: "note:leaf2", Target: "note:h1", Type: model.EdgeDependency})
+
+	// At min_degree=2, leaves and the lonely node drop. Hubs stay (each
+	// keeps degree 2 in the triangle even after leaves are removed).
+	result := Mermaid(g, Options{ViewLevel: ViewContainer, MinDegree: 2})
+	for _, hub := range []string{"([h1])", "([h2])", "([h3])"} {
+		if !strings.Contains(result, hub) {
+			t.Fatalf("hub %s should survive iterative pruning:\n%s", hub, result)
+		}
+	}
+	if strings.Contains(result, "lonely") {
+		t.Fatal("lonely note (degree=0) should be dropped")
+	}
+	for _, leaf := range []string{"([leaf1])", "([leaf2])"} {
+		if strings.Contains(result, leaf) {
+			t.Fatalf("leaf %s (degree=1) should be dropped", leaf)
+		}
+	}
+}
+
+func TestMermaid_MinDegreeIterativelyDropsMaroonedHub(t *testing.T) {
+	// A "hub" whose only connections are to leaves below the threshold gets
+	// dropped after iterative pruning, because losing its leaves leaves it
+	// with no surviving edges.
+	g := model.NewGraph("/vault")
+	g.AddNode(&model.Node{ID: "note:hub", Name: "hub", Type: model.NodeNote})
+	g.AddNode(&model.Node{ID: "note:a", Name: "a", Type: model.NodeNote})
+	g.AddNode(&model.Node{ID: "note:b", Name: "b", Type: model.NodeNote})
+	g.AddNode(&model.Node{ID: "note:c", Name: "c", Type: model.NodeNote})
+
+	g.AddEdge(&model.Edge{Source: "note:a", Target: "note:hub", Type: model.EdgeDependency})
+	g.AddEdge(&model.Edge{Source: "note:b", Target: "note:hub", Type: model.EdgeDependency})
+	g.AddEdge(&model.Edge{Source: "note:c", Target: "note:hub", Type: model.EdgeDependency})
+
+	result := Mermaid(g, Options{ViewLevel: ViewContainer, MinDegree: 3})
+	if strings.Contains(result, "hub") {
+		t.Fatalf("hub of dropped leaves should be removed by iterative pruning:\n%s", result)
+	}
+}
+
+func TestMermaid_NoteShape(t *testing.T) {
+	g := model.NewGraph("/vault")
+	g.AddNode(&model.Node{ID: "note:topic/intro", Name: "intro", Type: model.NodeNote})
+
+	result := Mermaid(g, Options{ViewLevel: ViewContainer})
+	if !strings.Contains(result, "subgraph Notes") {
+		t.Fatal("expected Notes subgraph")
+	}
+	if !strings.Contains(result, "([intro])") {
+		t.Fatalf("expected stadium shape ([intro]) in output:\n%s", result)
+	}
+}
+
+func TestMermaid_NoteLabelWithParensIsQuoted(t *testing.T) {
+	g := model.NewGraph("/vault")
+	g.AddNode(&model.Node{
+		ID:   "note:topic/article",
+		Name: "Article (with parens) - Author",
+		Type: model.NodeNote,
+	})
+
+	result := Mermaid(g, Options{ViewLevel: ViewContainer})
+	if !strings.Contains(result, `(["Article (with parens) - Author"])`) {
+		t.Fatalf("expected quoted label inside stadium shape:\n%s", result)
+	}
+}
+
+func TestMermaid_NotesAtSystemLevelHidden(t *testing.T) {
+	g := model.NewGraph("/vault")
+	g.AddNode(&model.Node{ID: "note:n", Name: "note-name", Type: model.NodeNote})
+	g.AddNode(&model.Node{ID: "svc:api", Name: "API", Type: model.NodeService})
+
+	result := Mermaid(g, Options{ViewLevel: ViewSystem})
+	if strings.Contains(result, "note-name") {
+		t.Fatal("system view should hide notes")
+	}
+	if !strings.Contains(result, "API") {
+		t.Fatal("system view should still show services")
+	}
+}
+
 func TestMermaid_ViewLevelFiltering(t *testing.T) {
 	g := model.NewGraph("/tmp")
 	g.AddNode(&model.Node{ID: "svc:api", Name: "API", Type: model.NodeService})
