@@ -234,9 +234,10 @@ func (h *HandlerRegistry) scanPath(ctx context.Context, path, alias string, sc S
 
 // ArchScanArgs are the arguments for arch_scan.
 type ArchScanArgs struct {
-	Path   string `json:"path"`
-	Repo   string `json:"repo,omitempty"`
-	Detail string `json:"detail,omitempty"` // "summary" (default) or "full"
+	Path   string   `json:"path"`
+	Paths  []string `json:"paths,omitempty"`
+	Repo   string   `json:"repo,omitempty"`
+	Detail string   `json:"detail,omitempty"` // "summary" (default) or "full"
 	ScanControl
 }
 
@@ -254,6 +255,18 @@ type ArchScanResult struct {
 }
 
 func (h *HandlerRegistry) archScan(ctx context.Context, args ArchScanArgs) (*ArchScanResult, error) {
+	// Mutual exclusion: paths and path/repo cannot both be set.
+	if len(args.Paths) > 0 && (args.Path != "" || args.Repo != "") {
+		return nil, fmt.Errorf("use either path or paths, not both")
+	}
+
+	if len(args.Paths) > 0 {
+		return h.archScanMulti(ctx, args)
+	}
+	return h.archScanSingle(ctx, args)
+}
+
+func (h *HandlerRegistry) archScanSingle(ctx context.Context, args ArchScanArgs) (*ArchScanResult, error) {
 	path, alias, err := h.resolveRepoPath(args.Path, args.Repo)
 	if err != nil {
 		return nil, err
@@ -288,6 +301,64 @@ func (h *HandlerRegistry) archScan(ctx context.Context, args ArchScanArgs) (*Arc
 		graph.RelativePaths()
 		res.Nodes = graph.Nodes()
 		res.Edges = graph.Edges()
+	}
+
+	return res, nil
+}
+
+// archScanMulti scans each path in args.Paths independently and merges results
+// into a single graph. Each node carries a Source field recording which scan
+// root produced it. The merged graph uses the first path as RootPath.
+func (h *HandlerRegistry) archScanMulti(ctx context.Context, args ArchScanArgs) (*ArchScanResult, error) {
+	if len(args.Paths) == 0 {
+		return nil, fmt.Errorf("paths must not be empty")
+	}
+
+	opts := args.toScanOptions()
+	var (
+		merged     *model.ArchGraph
+		truncated  bool
+		totalStats scanner.ScanStats
+	)
+
+	for _, p := range args.Paths {
+		if err := safepath.ValidateScanPath(p); err != nil {
+			return nil, fmt.Errorf("invalid path %q: %w", p, err)
+		}
+
+		result, err := h.cachedScan(ctx, p, "", opts)
+		if err != nil && !errors.Is(err, scanner.ErrLimitReached) {
+			return nil, fmt.Errorf("scanning %q: %w", p, err)
+		}
+		if result.Truncated {
+			truncated = true
+		}
+		totalStats.FilesAnalyzed += result.Stats.FilesAnalyzed
+		totalStats.FilesSkipped += result.Stats.FilesSkipped
+		totalStats.NodesFound += result.Stats.NodesFound
+		totalStats.EdgesFound += result.Stats.EdgesFound
+		totalStats.DurationMs += result.Stats.DurationMs
+
+		if merged == nil {
+			merged = result.Graph
+		} else {
+			merged.Merge(result.Graph)
+		}
+	}
+
+	res := &ArchScanResult{
+		RootPath:  merged.RootPath,
+		Topology:  string(merged.Topology),
+		NodeCount: merged.NodeCount(),
+		EdgeCount: merged.EdgeCount(),
+		Summary:   merged.Summary(),
+		Stats:     &totalStats,
+		Truncated: truncated,
+	}
+
+	if strings.EqualFold(args.Detail, "full") {
+		res.Nodes = merged.Nodes()
+		res.Edges = merged.Edges()
 	}
 
 	return res, nil

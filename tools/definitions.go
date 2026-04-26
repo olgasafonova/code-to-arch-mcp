@@ -30,6 +30,7 @@ discover services, dependencies, and infrastructure components.
 Also works on markdown directories (Obsidian vaults, doc trees) — each note becomes a node, wiki-links [[note]] and relative .md links become dependency edges.
 Returns a summary by default; set detail="full" for the complete node/edge graph.
 For a single service or subdirectory, use arch_focus instead.
+Pass paths (array of strings) instead of path to scan multiple directories and merge into a single graph — each node carries a source field recording which scan root produced it. Use this for cross-substrate analysis (code + docs + vault in one graph). paths and path/repo are mutually exclusive; passing both returns a validation error.
 WHY: Parses Go with go/ast, TypeScript and Python with tree-sitter, markdown with link extraction. Detects dependencies from import statements only; dynamic loading, reflection, or runtime service discovery is invisible.
 FAILS WHEN: directory path doesn't exist (check path and retry), directory contains no supported files (Go, TypeScript, Python, or markdown).`,
 		Category:   "analysis",

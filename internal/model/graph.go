@@ -44,6 +44,7 @@ type Node struct {
 	Type       NodeType          `json:"type"`
 	Language   string            `json:"language,omitempty"`
 	Path       string            `json:"path,omitempty"`
+	Source     string            `json:"source,omitempty"`
 	Properties map[string]string `json:"properties,omitempty"`
 }
 

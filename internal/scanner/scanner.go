@@ -185,6 +185,10 @@ func (s *Scanner) ScanWithOptions(ctx context.Context, rootPath string, opts Sca
 		truncated = true
 	}
 
+	// Stamp Source on every node so consumers can identify which scan root
+	// produced it. This is especially useful when multiple graphs are merged.
+	stampSource(graph, absRoot)
+
 	s.logger.Info("Scan complete",
 		"root", absRoot,
 		"files_analyzed", stats.FilesAnalyzed,
@@ -477,4 +481,15 @@ func (s *Scanner) SupportedExtensions() []string {
 		exts = append(exts, ext)
 	}
 	return exts
+}
+
+// stampSource sets Node.Source to scanRoot for every node that has no Source yet.
+// Called after ScanWithOptions assembles the graph, so single-path scans tag all
+// nodes with their root, and multi-path merges preserve the first-writer's Source.
+func stampSource(g *model.ArchGraph, scanRoot string) {
+	for _, n := range g.Nodes() {
+		if n.Source == "" {
+			n.Source = scanRoot
+		}
+	}
 }
