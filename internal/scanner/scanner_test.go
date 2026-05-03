@@ -85,6 +85,51 @@ var _ *sql.DB
 	}
 }
 
+// TestScan_SkipsSymlinks is a regression test for the Carlini-scaffold
+// finding: WalkDir surfaced symlinks to the analyzers, and analyzer
+// os.ReadFile then followed the link. Verified PoC: a symlink under the
+// scanned root pointing at /etc/passwd would be parsed as Python.
+//
+// This test creates a Go file inside the scan root and a symlink under the
+// root pointing at a Go file that lives OUTSIDE the root. The symlink target
+// has a unique top-level package name so we can detect whether it leaked
+// into the graph. Expectation: only the inside file appears in the graph.
+func TestScan_SkipsSymlinks(t *testing.T) {
+	root := t.TempDir()
+	writeFile(t, root, "real.go", `package real
+
+func RealFn() {}
+`)
+
+	// Out-of-root file with a distinct package name.
+	outside := t.TempDir()
+	outsideFile := filepath.Join(outside, "leaked.go")
+	if err := os.WriteFile(outsideFile, []byte(`package leaked
+
+func LeakedFn() {}
+`), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	// Symlink under root pointing at the outside file.
+	link := filepath.Join(root, "innocent.go")
+	if err := os.Symlink(outsideFile, link); err != nil {
+		t.Skipf("symlink unsupported on this filesystem: %v", err)
+	}
+
+	s := scanner.New(testLogger(), golang.New())
+	graph, err := s.Scan(root)
+	if err != nil {
+		t.Fatalf("Scan failed: %v", err)
+	}
+
+	for _, node := range graph.Nodes() {
+		if node.Name == "leaked" {
+			t.Fatalf("scanner followed symlink into outside package: %+v", node)
+		}
+	}
+}
+
 func TestScan_EmptyDirectory(t *testing.T) {
 	dir := t.TempDir()
 
