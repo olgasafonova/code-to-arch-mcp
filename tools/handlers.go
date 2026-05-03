@@ -1257,6 +1257,12 @@ func (h *HandlerRegistry) archRegistryAdd(_ context.Context, args ArchRegistryAd
 	if alias == "" {
 		alias = filepath.Base(absPath)
 	}
+	// Validate at the handler entry so the error message reaches the agent
+	// before any registry-internal step runs. registry.Add validates again as
+	// defense in depth.
+	if err := registry.ValidateAlias(alias); err != nil {
+		return nil, fmt.Errorf("invalid alias: %w", err)
+	}
 
 	if err := h.repoRegistry.Add(alias, absPath); err != nil {
 		return nil, err

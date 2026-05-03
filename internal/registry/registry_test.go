@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -46,6 +47,57 @@ func TestAddDuplicateAlias(t *testing.T) {
 	err := reg.Add("myrepo", "/tmp/other")
 	if err == nil {
 		t.Fatal("expected error for duplicate alias")
+	}
+}
+
+// TestValidateAlias_RejectsPathTraversal is a regression test for the
+// Carlini-scaffold finding: archRegistryAdd fed any string into Add as an
+// alias, and StatePath later did filepath.Join(stateDir, alias+".json"). An
+// alias of "../../tmp/victim" would let scan write/delete /tmp/victim.json.
+func TestValidateAlias_RejectsPathTraversal(t *testing.T) {
+	cases := []struct {
+		name  string
+		alias string
+	}{
+		{"empty", ""},
+		{"dotdot", ".."},
+		{"dotdot_traversal", "../../etc/foo"},
+		{"forward_slash", "foo/bar"},
+		{"backward_slash", `foo\bar`},
+		{"leading_dot", ".hidden"},
+		{"leading_hyphen", "-flag"},
+		{"null_byte", "foo\x00bar"},
+		{"newline", "foo\nbar"},
+		{"space", "foo bar"},
+		{"too_long", strings.Repeat("a", MaxAliasLen+1)},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if err := ValidateAlias(tc.alias); err == nil {
+				t.Errorf("expected ValidateAlias(%q) to error, got nil", tc.alias)
+			}
+		})
+	}
+}
+
+func TestValidateAlias_AcceptsCommonShapes(t *testing.T) {
+	for _, alias := range []string{"myrepo", "my-repo", "my_repo", "repo.v2", "MyRepo123", "a"} {
+		if err := ValidateAlias(alias); err != nil {
+			t.Errorf("ValidateAlias(%q) unexpectedly errored: %v", alias, err)
+		}
+	}
+}
+
+// TestAdd_RejectsBadAlias confirms validation runs at the Add boundary so
+// callers that bypass archRegistryAdd's pre-check still cannot escape.
+func TestAdd_RejectsBadAlias(t *testing.T) {
+	reg := setupTestRegistry(t)
+	if err := reg.Add("../../etc/passwd", "/tmp/x"); err == nil {
+		t.Fatal("expected Add to reject path-traversal alias")
+	}
+	// Confirm StatePath isn't tricked: bad alias never makes it into the map.
+	if _, ok := reg.Repos["../../etc/passwd"]; ok {
+		t.Fatal("registry retained bad alias despite Add error")
 	}
 }
 

@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"regexp"
 	"time"
 
 	"github.com/olgasafonova/ridge/internal/infra"
@@ -16,7 +17,34 @@ const (
 	serverName   = "ridge"
 	registryFile = "registry.json"
 	stateSubdir  = "state"
+
+	// MaxAliasLen caps the alias length to keep StatePath outputs short and
+	// avoid filesystem-name-length surprises.
+	MaxAliasLen = 64
 )
+
+// aliasPattern restricts aliases to a safe filename-slug shape so that
+// StatePath cannot be tricked into writing or deleting outside the state
+// directory. Must start with an alphanumeric character; remaining characters
+// are alphanumeric, underscore, hyphen, or dot. Leading dot is rejected to
+// prevent creating hidden files. Slashes and `..` cannot appear, which closes
+// the path-traversal exploit chain in archRegistryAdd / archRegistryRemove.
+var aliasPattern = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9_.-]*$`)
+
+// ValidateAlias returns an error if alias is empty, too long, or contains
+// characters that could escape the state directory via filepath.Join.
+func ValidateAlias(alias string) error {
+	if alias == "" {
+		return fmt.Errorf("alias is required")
+	}
+	if len(alias) > MaxAliasLen {
+		return fmt.Errorf("alias too long (max %d chars)", MaxAliasLen)
+	}
+	if !aliasPattern.MatchString(alias) {
+		return fmt.Errorf("alias contains forbidden characters (allowed: alphanumeric, _, -, .; must start with alphanumeric)")
+	}
+	return nil
+}
 
 // Repo is a registered repository.
 type Repo struct {
@@ -59,6 +87,14 @@ func Load() (*Registry, error) {
 	if reg.Repos == nil {
 		reg.Repos = make(map[string]Repo)
 	}
+	// Defense in depth: drop entries whose aliases would not pass current
+	// validation. A registry file written before tightening (or tampered
+	// externally) cannot trick StatePath into writing outside the state dir.
+	for alias := range reg.Repos {
+		if err := ValidateAlias(alias); err != nil {
+			delete(reg.Repos, alias)
+		}
+	}
 	return reg, nil
 }
 
@@ -68,8 +104,12 @@ func (r *Registry) Save() error {
 	return infra.SaveJSON(path, r)
 }
 
-// Add registers a repo under the given alias. Returns an error if the alias is taken.
+// Add registers a repo under the given alias. Returns an error if the alias is
+// taken or fails ValidateAlias.
 func (r *Registry) Add(alias, path string) error {
+	if err := ValidateAlias(alias); err != nil {
+		return err
+	}
 	if existing, ok := r.Repos[alias]; ok {
 		return fmt.Errorf("alias %q already registered (path: %s)", alias, existing.Path)
 	}
