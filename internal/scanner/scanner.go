@@ -241,6 +241,16 @@ func (s *Scanner) walkAndCollect(ctx context.Context, absRoot string, skipDirs m
 			}
 			return nil
 		}
+		// Skip symlinks. WalkDir surfaces the symlink itself (not the
+		// target) here; analyzers later os.ReadFile the path, which
+		// follows the link. A symlink under absRoot can point at any
+		// readable file on the system — verified PoC reads /etc/passwd via
+		// `innocent.py -> /etc/passwd`. Default-deny is safe; users who
+		// genuinely need symlink-following can opt in via a future flag.
+		if d.Type()&fs.ModeSymlink != 0 {
+			skipped++
+			return nil
+		}
 		if matchesAnyGlob(skipGlobs, d.Name(), path, absRoot) {
 			skipped++
 			return nil
