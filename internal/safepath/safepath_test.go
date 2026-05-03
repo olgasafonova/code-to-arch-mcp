@@ -75,6 +75,48 @@ func TestValidateOutputPath(t *testing.T) {
 	}
 }
 
+// TestValidateOutputPath_RejectsSymlinkEscape is a regression test for the
+// Carlini-scaffold finding: ValidateOutputPath did `strings.HasPrefix(absFile,
+// absBase+sep)` and never resolved symlinks. A symlink at <baseDir>/link
+// pointing at <outside>/file lexically passed (since absFile stayed under
+// absBase) but the actual write went outside.
+func TestValidateOutputPath_RejectsSymlinkEscape(t *testing.T) {
+	baseDir := t.TempDir()
+	outsideDir := t.TempDir()
+
+	link := filepath.Join(baseDir, "trapdoor")
+	if err := os.Symlink(outsideDir, link); err != nil {
+		t.Skipf("symlink unsupported: %v", err)
+	}
+
+	// A write to baseDir/trapdoor/secret.json would land in outsideDir,
+	// outside the allowed root.
+	target := filepath.Join(link, "secret.json")
+	if err := ValidateOutputPath(target, baseDir); err == nil {
+		t.Fatal("expected rejection: write through baseDir-internal symlink escapes baseDir")
+	}
+}
+
+// TestValidateOutputPath_RejectsHasPrefixSiblingTrick is a regression test for
+// the same finding's other sub-pattern: HasPrefix-based containment treated
+// `/tmp/baseEvil/x` as inside `/tmp/base` because the absBase string was a
+// prefix of the absFile string. filepath.Rel rejects this.
+func TestValidateOutputPath_RejectsHasPrefixSiblingTrick(t *testing.T) {
+	parent := t.TempDir()
+	base := filepath.Join(parent, "base")
+	if err := os.MkdirAll(base, 0755); err != nil {
+		t.Fatal(err)
+	}
+	siblingPrefix := filepath.Join(parent, "baseEvil")
+	if err := os.MkdirAll(siblingPrefix, 0755); err != nil {
+		t.Fatal(err)
+	}
+	target := filepath.Join(siblingPrefix, "out.json")
+	if err := ValidateOutputPath(target, base); err == nil {
+		t.Fatalf("expected rejection: %s is sibling of %s, not under it", target, base)
+	}
+}
+
 func TestValidateScanPath_SensitiveDotDirs(t *testing.T) {
 	home, err := os.UserHomeDir()
 	if err != nil {
